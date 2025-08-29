@@ -1,7 +1,6 @@
 package com.bidscube.sdk.device.providers;
 
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.os.Handler;
@@ -11,10 +10,10 @@ import android.util.Log;
 import android.view.WindowManager;
 
 import androidx.core.util.Consumer;
-import androidx.preference.PreferenceManager;
 
-import com.bidscube.sdk.device.models.AdInfo;
-import com.bidscube.sdk.device.models.DeviceInfo;
+import com.bidscube.sdk.consent.ConsentManager;
+import com.bidscube.sdk.models.AdInfo;
+import com.bidscube.sdk.models.DeviceInfo;
 import com.google.android.gms.ads.identifier.AdvertisingIdClient;
 
 import java.util.Locale;
@@ -22,14 +21,14 @@ import java.util.Locale;
 public class DeviceInfoProvider {
 
     private final Context context;
+    private final ConsentManager consentManager;
 
     public DeviceInfoProvider(Context context) {
         this.context = context.getApplicationContext();
+        this.consentManager = new ConsentManager(context);
     }
 
     public void getDeviceInfoAsync(Consumer<DeviceInfo> callback) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-
         String bundle = context.getPackageName();
         String appName = getAppName();
         String appStoreUrl = "https://play.google.com/store/apps/details?id=" + bundle;
@@ -40,22 +39,17 @@ public class DeviceInfoProvider {
         String userAgent = System.getProperty("http.agent", "Android");
         String appVersion = getAppVersion();
 
-        // GDPR Applies
-        int gdprApplies = prefs.getInt("IABTCF_gdprApplies", -1);
+        int gdprApplies = consentManager.getGdprApplies();
+        String consentString = consentManager.getGdprConsentString();
+        String addtlConsent = consentManager.getAdditionalConsent();
+        String gppString = consentManager.getGppString();
+        String usPrivacy = consentManager.getUsPrivacyString();
 
-        // Consent String
-        String consentString = prefs.getString("IABTCF_TCString", "");
-
-        // Additional Consent
-        String addtlConsent = prefs.getString("IABTCF_AddtlConsent", "");
-
-        // GPP String (if available)
-        String gppString = prefs.getString("IABGPP_HDR_GppString", "");
-
-        Log.d("GDPR", "gdprApplies: " + gdprApplies);
-        Log.d("GDPR", "consentString: " + consentString);
-        Log.d("GDPR", "addtlConsent: " + addtlConsent);
-        Log.d("GDPR", "gppString: " + gppString);
+        Log.d("DeviceInfoProvider", "GDPR Applies: " + gdprApplies);
+        Log.d("DeviceInfoProvider", "Consent String: " + consentString);
+        Log.d("DeviceInfoProvider", "Additional Consent: " + addtlConsent);
+        Log.d("DeviceInfoProvider", "GPP String: " + gppString);
+        Log.d("DeviceInfoProvider", "US Privacy: " + usPrivacy);
 
         new Thread(() -> {
             AdInfo adInfo;
@@ -70,7 +64,6 @@ public class DeviceInfoProvider {
             final int dnt = adInfo.isLimitAdTracking() ? 1 : 0;
             final String ifa = adInfo.getAdId();
 
-            // Banner and Video device info
             DeviceInfo deviceInfo = new DeviceInfo(
                     bundle,
                     appName,
@@ -81,28 +74,32 @@ public class DeviceInfoProvider {
                     userAgent,
                     ifa,
                     dnt,
-                    appVersion
-            );
-
-            DeviceInfo nativeDeviceInfo = new DeviceInfo(
-                    bundle,
-                    appName,
-                    appStoreUrl,
-                    language,
-                    deviceWidth,
-                    deviceHeight,
-                    userAgent,
-                    ifa,
-                    dnt,
                     appVersion,
-                    0,
-                    "",
-                    "1YNN",
+                    gdprApplies,
+                    consentString,
+                    usPrivacy,
                     false
             );
 
             new Handler(Looper.getMainLooper()).post(() -> callback.accept(deviceInfo));
         }).start();
+    }
+
+    /**
+     * Get device info with current consent status
+     * This method can be called after consent has been updated
+     */
+    public void getDeviceInfoWithCurrentConsent(Consumer<DeviceInfo> callback) {
+
+        getDeviceInfoAsync(callback);
+    }
+
+    /**
+     * Get the ConsentManager instance for direct access
+     * @return ConsentManager instance
+     */
+    public ConsentManager getConsentManager() {
+        return consentManager;
     }
 
     private String getAppName() {

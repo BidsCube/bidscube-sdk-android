@@ -2,7 +2,7 @@ package com.bidscube.sdk.ads;
 
 import android.net.Uri;
 
-import com.bidscube.sdk.device.models.DeviceInfo;
+import com.bidscube.sdk.models.DeviceInfo;
 import com.bidscube.sdk.network.VideoAdUrlBuilder;
 
 public class VideoAdType implements AdType {
@@ -17,3 +17,4 @@ public class VideoAdType implements AdType {
         return new VideoAdUrlBuilder(placementId, deviceInfo).build();
     }
 }
+

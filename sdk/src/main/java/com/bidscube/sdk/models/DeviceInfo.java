@@ -1,4 +1,4 @@
-package com.bidscube.sdk.device.models;
+package com.bidscube.sdk.models;
 
 /**
  * Immutable device information model.
@@ -6,7 +6,6 @@ package com.bidscube.sdk.device.models;
  */
 public class DeviceInfo {
 
-    // Device and app info
     private final String bundle;
     private final String appName;
     private final String appStoreUrl;
@@ -18,13 +17,11 @@ public class DeviceInfo {
     private final int dnt;
     private final String appVersion;
 
-    // GDPR/Privacy fields
-    private final int gdpr;           // 0 = no consent, 1 = consent
-    private final String gdprConsent; // Consent string
-    private final String usPrivacy;   // CCPA string
-    private final boolean coppa;      // true if child-directed
+    private final int gdpr;
+    private final String gdprConsent;
+    private final String usPrivacy;
+    private final boolean coppa;
 
-    // Default values for optional fields
     private static final int DEFAULT_GDPR = 0;
     private static final String DEFAULT_GDPR_CONSENT = "";
     private static final String DEFAULT_US_PRIVACY = "1YNN";

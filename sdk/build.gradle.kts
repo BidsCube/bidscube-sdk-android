@@ -36,6 +36,7 @@ dependencies {
     implementation(libs.play.services.ads.identifier)
     implementation(libs.interactivemedia)
     implementation(libs.androidx.media3.ui)
+    implementation("androidx.cardview:cardview:1.0.0")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

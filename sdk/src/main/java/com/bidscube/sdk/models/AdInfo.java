@@ -1,4 +1,4 @@
-package com.bidscube.sdk.device.models;
+package com.bidscube.sdk.models;
 
 public class AdInfo {
     private final String adId;

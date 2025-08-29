@@ -1,5 +1,6 @@
 plugins {
-    alias(libs.plugins.android.library)
+    id("com.android.library") version "8.9.0"
+    `maven-publish`
 }
 
 android {
@@ -40,4 +41,18 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            create<MavenPublication>("release") {
+                from(components["release"])
+                
+                groupId = "com.github.BidsCube"
+                artifactId = "bidscube-sdk"
+                version = "SDK"
+            }
+        }
+    }
 }

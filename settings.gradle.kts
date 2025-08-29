@@ -11,15 +11,9 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories {
-        mavenLocal()
-        google()
-        mavenCentral()
-        maven(url = "https://jitpack.io")
-    }
-}
+
+// For Gradle 6.7.1 compatibility, repositories are defined in build.gradle.kts files
+// instead of using dependencyResolutionManagement
 
 rootProject.name = "sdk"
 include(":app")

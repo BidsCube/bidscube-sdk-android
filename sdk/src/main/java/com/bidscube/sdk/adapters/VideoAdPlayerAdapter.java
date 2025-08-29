@@ -20,157 +20,419 @@ import java.util.TimerTask;
 
 public class VideoAdPlayerAdapter implements VideoAdPlayer {
 
-    private static final String LOGTAG = "IMABasicSample";
+    private static final String LOGTAG = "VideoAdPlayerAdapter";
     private static final long POLLING_TIME_MS = 250;
     private static final long INITIAL_DELAY_MS = 250;
+    
     private final VideoView videoPlayer;
     private final AudioManager audioManager;
     private final List<VideoAdPlayerCallback> videoAdPlayerCallbacks = new ArrayList<>();
+    
     private Timer timer;
     private int adDuration;
-
     private int savedAdPosition;
     private AdMediaInfo loadedAdMediaInfo;
 
+    private boolean isAdPlaying = false;
+    private boolean isAdPaused = false;
+    private boolean isAdLoaded = false;
+    private boolean isReleased = false;
+
     public VideoAdPlayerAdapter(VideoView videoPlayer, AudioManager audioManager) {
         this.videoPlayer = videoPlayer;
-        this.videoPlayer.setOnCompletionListener(
-                (MediaPlayer mediaPlayer) -> notifyImaOnContentCompleted());
         this.audioManager = audioManager;
+
+        setupVideoPlayerListeners();
+    }
+
+    private void setupVideoPlayerListeners() {
+        if (videoPlayer == null) {
+            Log.e(LOGTAG, "VideoPlayer is null, cannot set up listeners");
+            return;
+        }
+
+        videoPlayer.setOnCompletionListener(mediaPlayer -> {
+            Log.d(LOGTAG, "Video completed");
+            isAdPlaying = false;
+            isAdPaused = false;
+            savedAdPosition = 0;
+            notifyImaOnContentCompleted();
+        });
+
+        videoPlayer.setOnErrorListener((mediaPlayer, errorType, extra) -> {
+            Log.e(LOGTAG, "Video error: " + errorType + ", extra: " + extra);
+            isAdPlaying = false;
+            isAdPaused = false;
+            notifyImaSdkAboutAdError(errorType);
+            return false;
+        });
+
+        videoPlayer.setOnPreparedListener(mediaPlayer -> {
+            Log.d(LOGTAG, "Video prepared successfully");
+            isAdLoaded = true;
+            adDuration = mediaPlayer.getDuration();
+            if (savedAdPosition > 0) {
+                mediaPlayer.seekTo(savedAdPosition);
+            }
+        });
     }
 
     @Override
     public void addCallback(@NonNull VideoAdPlayerCallback videoAdPlayerCallback) {
-        videoAdPlayerCallbacks.add(videoAdPlayerCallback);
+        if (videoAdPlayerCallback != null && !videoAdPlayerCallbacks.contains(videoAdPlayerCallback)) {
+            videoAdPlayerCallbacks.add(videoAdPlayerCallback);
+            Log.d(LOGTAG, "Callback added, total callbacks: " + videoAdPlayerCallbacks.size());
+        }
     }
 
     @Override
     public void loadAd(@NonNull AdMediaInfo adMediaInfo, @NonNull AdPodInfo adPodInfo) {
-        // This simple ad loading logic works because preloading is disabled. To support
-        // preloading ads your app must maintain state for the currently playing ad
-        // while handling upcoming ad downloading and buffering at the same time.
-        // See the IMA Android preloading guide for more info:
-        // https://developers.google.com/interactive-media-ads/docs/sdks/android/client-side/preload
+        Log.i(LOGTAG, "Loading ad: " + adMediaInfo.getUrl());
+        
+        if (adMediaInfo == null) {
+            Log.e(LOGTAG, "AdMediaInfo is null");
+            return;
+        }
+        
         loadedAdMediaInfo = adMediaInfo;
+        isAdLoaded = false;
+        isAdPlaying = false;
+        isAdPaused = false;
+        
+        Log.d(LOGTAG, "Ad loaded successfully");
     }
 
     @Override
     public void pauseAd(@NonNull AdMediaInfo adMediaInfo) {
-        Log.i(LOGTAG, "pauseAd");
-        savedAdPosition = videoPlayer.getCurrentPosition();
-        stopAdTracking();
+        Log.i(LOGTAG, "Pausing ad");
+        
+        if (videoPlayer != null && isAdPlaying) {
+            try {
+                savedAdPosition = videoPlayer.getCurrentPosition();
+                videoPlayer.pause();
+                isAdPlaying = false;
+                isAdPaused = true;
+                stopAdTracking();
+                Log.d(LOGTAG, "Ad paused at position: " + savedAdPosition);
+            } catch (Exception e) {
+                Log.e(LOGTAG, "Error pausing ad: " + e.getMessage(), e);
+            }
+        } else {
+            Log.w(LOGTAG, "Cannot pause ad: videoPlayer=" + (videoPlayer != null) + ", isAdPlaying=" + isAdPlaying);
+        }
     }
 
     @Override
     public void playAd(AdMediaInfo adMediaInfo) {
-        Log.i(LOGTAG, "playAd");
-        videoPlayer.setVideoURI(Uri.parse(adMediaInfo.getUrl()));
+        Log.i(LOGTAG, "Playing ad");
 
-        videoPlayer.setOnPreparedListener(
-                mediaPlayer -> {
-                    adDuration = mediaPlayer.getDuration();
-                    if (savedAdPosition > 0) {
-                        mediaPlayer.seekTo(savedAdPosition);
-                    }
+        if (videoPlayer == null) {
+            Log.e(LOGTAG, "VideoPlayer is null, cannot play ad");
+            notifyImaSdkAboutAdError(MediaPlayer.MEDIA_ERROR_UNSUPPORTED);
+            return;
+        }
+
+        if (adMediaInfo == null) {
+            Log.e(LOGTAG, "AdMediaInfo is null, cannot play ad");
+            notifyImaSdkAboutAdError(MediaPlayer.MEDIA_ERROR_UNSUPPORTED);
+            return;
+        }
+
+        try {
+            String videoUrl = adMediaInfo.getUrl();
+            Log.d(LOGTAG, "Loading video from URL: " + videoUrl);
+
+            if (videoUrl == null || videoUrl.trim().isEmpty()) {
+                Log.e(LOGTAG, "Video URL is null or empty");
+                notifyImaSdkAboutAdError(MediaPlayer.MEDIA_ERROR_UNSUPPORTED);
+                return;
+            }
+
+            isAdPlaying = false;
+            isAdPaused = false;
+            isAdLoaded = false;
+
+            if (videoUrl.startsWith("http://") || videoUrl.startsWith("https://")) {
+                videoPlayer.setVideoPath(videoUrl);
+            } else {
+
+                videoPlayer.setVideoURI(Uri.parse(videoUrl));
+            }
+
+            videoPlayer.setOnPreparedListener(mediaPlayer -> {
+                Log.d(LOGTAG, "Video prepared successfully");
+                isAdLoaded = true;
+                adDuration = mediaPlayer.getDuration();
+                
+                if (savedAdPosition > 0) {
+                    mediaPlayer.seekTo(savedAdPosition);
+                    Log.d(LOGTAG, "Seeking to saved position: " + savedAdPosition);
+                }
+
+                try {
                     mediaPlayer.start();
+                    isAdPlaying = true;
+                    isAdPaused = false;
                     startAdTracking();
-                });
-        videoPlayer.setOnErrorListener(
-                (mediaPlayer, errorType, extra) -> notifyImaSdkAboutAdError(errorType));
-        videoPlayer.setOnCompletionListener(
-                mediaPlayer -> {
-                    savedAdPosition = 0;
-                    notifyImaSdkAboutAdEnded();
-                });
+                    Log.d(LOGTAG, "Ad started playing successfully");
+                } catch (Exception e) {
+                    Log.e(LOGTAG, "Error starting video playback: " + e.getMessage(), e);
+                    notifyImaSdkAboutAdError(MediaPlayer.MEDIA_ERROR_UNSUPPORTED);
+                }
+            });
+
+            videoPlayer.setOnErrorListener((mediaPlayer, errorType, extra) -> {
+                Log.e(LOGTAG, "Video error: " + errorType + ", extra: " + extra);
+                isAdPlaying = false;
+                isAdPaused = false;
+                isAdLoaded = false;
+                notifyImaSdkAboutAdError(errorType);
+                return false;
+            });
+
+            videoPlayer.setOnCompletionListener(mediaPlayer -> {
+                Log.d(LOGTAG, "Video completed");
+                isAdPlaying = false;
+                isAdPaused = false;
+                isAdLoaded = false;
+                savedAdPosition = 0;
+                stopAdTracking();
+                notifyImaSdkAboutAdEnded();
+            });
+
+        } catch (Exception e) {
+            Log.e(LOGTAG, "Error setting video source: " + e.getMessage(), e);
+            isAdPlaying = false;
+            isAdPaused = false;
+            isAdLoaded = false;
+            notifyImaSdkAboutAdError(MediaPlayer.MEDIA_ERROR_UNSUPPORTED);
+        }
     }
 
     @Override
     public void release() {
-        // any clean up that needs to be done.
+        try {
+
+            isReleased = true;
+            
+            stopAdTracking();
+            
+            if (videoPlayer != null) {
+                videoPlayer.stopPlayback();
+            }
+
+            isAdPlaying = false;
+            isAdPaused = false;
+            isAdLoaded = false;
+            savedAdPosition = 0;
+            
+            Log.d(LOGTAG, "VideoAdPlayerAdapter released successfully");
+        } catch (Exception e) {
+            Log.e(LOGTAG, "Error releasing VideoAdPlayerAdapter: " + e.getMessage(), e);
+        }
     }
 
     @Override
     public void removeCallback(VideoAdPlayerCallback videoAdPlayerCallback) {
-        videoAdPlayerCallbacks.remove(videoAdPlayerCallback);
+        if (videoAdPlayerCallback != null) {
+            videoAdPlayerCallbacks.remove(videoAdPlayerCallback);
+            Log.d(LOGTAG, "Callback removed, total callbacks: " + videoAdPlayerCallbacks.size());
+        }
     }
 
     @Override
     public void stopAd(AdMediaInfo adMediaInfo) {
-        Log.i(LOGTAG, "stopAd");
-        stopAdTracking();
+        Log.i(LOGTAG, "Stopping ad");
+        
+        if (videoPlayer != null) {
+            try {
+                videoPlayer.stopPlayback();
+                isAdPlaying = false;
+                isAdPaused = false;
+                isAdLoaded = false;
+                savedAdPosition = 0;
+                stopAdTracking();
+                Log.d(LOGTAG, "Ad stopped successfully");
+            } catch (Exception e) {
+                Log.e(LOGTAG, "Error stopping ad: " + e.getMessage(), e);
+            }
+        }
     }
 
-    /** Returns current volume as a percent of max volume. */
+    /**
+     * Returns current volume as a percent of max volume.
+     */
     @Override
     public int getVolume() {
-        return audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                / audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        try {
+            if (audioManager != null) {
+                return (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) * 100) 
+                       / audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            }
+        } catch (Exception e) {
+            Log.e(LOGTAG, "Error getting volume: " + e.getMessage(), e);
+        }
+        return 0;
+    }
+
+    /**
+     * Check if ad is currently playing
+     */
+    public boolean isAdPlaying() {
+        return isAdPlaying;
+    }
+
+    /**
+     * Check if ad is currently paused
+     */
+    public boolean isAdPaused() {
+        return isAdPaused;
+    }
+
+    /**
+     * Check if ad is loaded and ready
+     */
+    public boolean isAdLoaded() {
+        return isAdLoaded;
+    }
+
+    /**
+     * Get current ad position
+     */
+    public int getCurrentPosition() {
+        if (videoPlayer != null) {
+            try {
+                return videoPlayer.getCurrentPosition();
+            } catch (Exception e) {
+                Log.e(LOGTAG, "Error getting current position: " + e.getMessage(), e);
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Get ad duration
+     */
+    public int getAdDuration() {
+        return adDuration;
     }
 
     private void startAdTracking() {
-        Log.i(LOGTAG, "startAdTracking");
+        Log.i(LOGTAG, "Starting ad tracking");
         if (timer != null) {
-            return;
+            timer.cancel();
         }
+        
         timer = new Timer();
-        TimerTask updateTimerTask =
-                new TimerTask() {
-                    @Override
-                    public void run() {
-                        VideoProgressUpdate progressUpdate = getAdProgress();
-                        notifyImaSdkAboutAdProgress(progressUpdate);
-                    }
-                };
+        TimerTask updateTimerTask = new TimerTask() {
+            @Override
+            public void run() {
+                try {
+                    VideoProgressUpdate progressUpdate = getAdProgress();
+                    notifyImaSdkAboutAdProgress(progressUpdate);
+                } catch (Exception e) {
+                    Log.e(LOGTAG, "Error in ad tracking timer: " + e.getMessage(), e);
+                }
+            }
+        };
         timer.schedule(updateTimerTask, POLLING_TIME_MS, INITIAL_DELAY_MS);
     }
 
     private void notifyImaSdkAboutAdEnded() {
-        Log.i(LOGTAG, "notifyImaSdkAboutAdEnded");
+        if (isReleased) {
+            Log.d(LOGTAG, "Skipping ad ended callback - adapter is released");
+            return;
+        }
+        
+        Log.i(LOGTAG, "Notifying IMA SDK about ad ended");
         savedAdPosition = 0;
+        
         for (VideoAdPlayer.VideoAdPlayerCallback callback : videoAdPlayerCallbacks) {
-            callback.onEnded(loadedAdMediaInfo);
+            try {
+                callback.onEnded(loadedAdMediaInfo);
+            } catch (Exception e) {
+                Log.e(LOGTAG, "Error notifying callback about ad ended: " + e.getMessage(), e);
+            }
         }
     }
 
     private void notifyImaSdkAboutAdProgress(VideoProgressUpdate adProgress) {
+        if (isReleased) {
+            Log.d(LOGTAG, "Skipping ad progress callback - adapter is released");
+            return;
+        }
+        
         for (VideoAdPlayer.VideoAdPlayerCallback callback : videoAdPlayerCallbacks) {
-            callback.onAdProgress(loadedAdMediaInfo, adProgress);
+            try {
+                callback.onAdProgress(loadedAdMediaInfo, adProgress);
+            } catch (Exception e) {
+                Log.e(LOGTAG, "Error notifying callback about ad progress: " + e.getMessage(), e);
+            }
         }
     }
 
     /**
      * @param errorType Media player's error type as defined at
-     *     https://cs.android.com/android/platform/superproject/+/master:frameworks/base/media/java/android/media/MediaPlayer.java;l=4335
+     *                  https://cs.android.com/android/platform/superproject/+/master:frameworks/base/media/java/android/media/MediaPlayer.java;l=4335
      * @return True to stop the current ad playback.
      */
     private boolean notifyImaSdkAboutAdError(int errorType) {
-        Log.i(LOGTAG, "notifyImaSdkAboutAdError");
+        if (isReleased) {
+            Log.d(LOGTAG, "Skipping ad error callback - adapter is released");
+            return true;
+        }
+        
+        Log.i(LOGTAG, "Notifying IMA SDK about ad error: " + errorType);
 
         switch (errorType) {
             case MediaPlayer.MEDIA_ERROR_UNSUPPORTED:
-                Log.e(LOGTAG, "notifyImaSdkAboutAdError: MEDIA_ERROR_UNSUPPORTED");
+                Log.e(LOGTAG, "MEDIA_ERROR_UNSUPPORTED");
                 break;
             case MediaPlayer.MEDIA_ERROR_TIMED_OUT:
-                Log.e(LOGTAG, "notifyImaSdkAboutAdError: MEDIA_ERROR_TIMED_OUT");
+                Log.e(LOGTAG, "MEDIA_ERROR_TIMED_OUT");
+                break;
+            case MediaPlayer.MEDIA_ERROR_SERVER_DIED:
+                Log.e(LOGTAG, "MEDIA_ERROR_SERVER_DIED");
+                break;
+            case MediaPlayer.MEDIA_ERROR_IO:
+                Log.e(LOGTAG, "MEDIA_ERROR_IO");
+                break;
+            case MediaPlayer.MEDIA_ERROR_MALFORMED:
+                Log.e(LOGTAG, "MEDIA_ERROR_MALFORMED");
                 break;
             default:
+                Log.e(LOGTAG, "Unknown media error: " + errorType);
                 break;
         }
+        
         for (VideoAdPlayer.VideoAdPlayerCallback callback : videoAdPlayerCallbacks) {
-            callback.onError(loadedAdMediaInfo);
+            try {
+                callback.onError(loadedAdMediaInfo);
+            } catch (Exception e) {
+                Log.e(LOGTAG, "Error notifying callback about ad error: " + e.getMessage(), e);
+            }
         }
         return true;
     }
 
     public void notifyImaOnContentCompleted() {
-        Log.i(LOGTAG, "notifyImaOnContentCompleted");
+        if (isReleased) {
+            Log.d(LOGTAG, "Skipping content completed callback - adapter is released");
+            return;
+        }
+        
+        Log.i(LOGTAG, "Notifying IMA SDK about content completed");
         for (VideoAdPlayer.VideoAdPlayerCallback callback : videoAdPlayerCallbacks) {
-            callback.onContentComplete();
+            try {
+                callback.onContentComplete();
+            } catch (Exception e) {
+                Log.e(LOGTAG, "Error notifying callback about content completed: " + e.getMessage(), e);
+            }
         }
     }
 
     private void stopAdTracking() {
-        Log.i(LOGTAG, "stopAdTracking");
+        Log.i(LOGTAG, "Stopping ad tracking");
         if (timer != null) {
             timer.cancel();
             timer = null;
@@ -179,7 +441,14 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
 
     @Override
     public VideoProgressUpdate getAdProgress() {
-        long adPosition = videoPlayer.getCurrentPosition();
-        return new VideoProgressUpdate(adPosition, adDuration);
+        try {
+            if (videoPlayer != null && isAdPlaying) {
+                long adPosition = videoPlayer.getCurrentPosition();
+                return new VideoProgressUpdate(adPosition, adDuration);
+            }
+        } catch (Exception e) {
+            Log.e(LOGTAG, "Error getting ad progress: " + e.getMessage(), e);
+        }
+        return new VideoProgressUpdate(0, adDuration);
     }
 }

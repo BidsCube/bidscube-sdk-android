@@ -24,7 +24,7 @@ public class DeviceInfo {
 
     private static final int DEFAULT_GDPR = 0;
     private static final String DEFAULT_GDPR_CONSENT = "";
-    private static final String DEFAULT_US_PRIVACY = "1YNN";
+    private static final String DEFAULT_US_PRIVACY = "";
     private static final boolean DEFAULT_COPPA = false;
 
     /**

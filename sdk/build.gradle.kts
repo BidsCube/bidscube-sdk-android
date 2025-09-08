@@ -1,6 +1,8 @@
 plugins {
-    id("com.android.library") version "8.9.0"
-    `maven-publish`
+    id("com.android.library")
+    kotlin("android")
+    id("maven-publish")
+    id("signing")
 }
 
 android {
@@ -9,8 +11,6 @@ android {
 
     defaultConfig {
         minSdk = 24
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
     }
 
@@ -26,33 +26,87 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true
+    }
+
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+            withJavadocJar()
+        }
     }
 }
 
 dependencies {
-    implementation("androidx.media3:media3-exoplayer:1.8.0")
-    implementation("com.google.android.ump:user-messaging-platform:2.1.0")
-    implementation(libs.androidx.appcompat)
-    implementation(libs.material)
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    compileOnly("com.android.tools:desugar_jdk_libs:2.0.4")
+    implementation(libs.ump)
     implementation(libs.play.services.ads.identifier)
     implementation(libs.interactivemedia)
     implementation(libs.androidx.media3.ui)
-    implementation("androidx.cardview:cardview:1.0.0")
-    testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
+    implementation(libs.androidx.cardview)
+    implementation(libs.material)
 }
 
 afterEvaluate {
     publishing {
         publications {
-            create<MavenPublication>("release") {
-                from(components["release"])
-                
-                groupId = "com.github.BidsCube"
+            register<MavenPublication>("release") {
+                groupId = "com.bidscube"
                 artifactId = "bidscube-sdk"
-                version = "SDK"
+                version = System.getenv("BidscubeVersion") ?: "1.0.1"
+
+                from(components["release"])
+
+                pom {
+                    name.set("Bidscube SDK")
+                    description.set("The official Bidscube SDK for Android advertising platform")
+                    url.set("https://github.com/BidsCube/bidscube-sdk")
+
+                    licenses {
+                        license {
+                            name.set("MIT License")
+                            url.set("https://github.com/BidsCube/bidscube-sdk/blob/main/LICENSE")
+                        }
+                    }
+
+                    developers {
+                        developer {
+                            id.set("bidscube-team")
+                            name.set("Bidscube Team")
+                            email.set("dev@bidscube.com")
+                            organization.set("Bidscube")
+                            organizationUrl.set("https://bidscube.com")
+                        }
+                    }
+
+                    scm {
+                        connection.set("scm:git:git://github.com/BidsCube/bidscube-sdk.git")
+                        developerConnection.set("scm:git:ssh://github.com:BidsCube/bidscube-sdk.git")
+                        url.set("https://github.com/BidsCube/bidscube-sdk")
+                    }
+                }
+
+
             }
+        }
+
+        repositories {
+            maven {
+                name = "central"
+                url = uri("https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/")
+                credentials {
+                    username = project.findProperty("mavenCentralUsername") as String? ?: ""
+                    password = project.findProperty("mavenCentralPassword") as String? ?: ""
+                }
+            }
+        }
+    }
+
+    signing {
+        sign(publishing.publications["release"])
+        setRequired {
+            gradle.taskGraph.hasTask("publish") && !gradle.taskGraph.hasTask("publishToMavenLocal")
         }
     }
 }

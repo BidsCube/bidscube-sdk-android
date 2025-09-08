@@ -7,6 +7,7 @@ import android.util.AttributeSet;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
+import com.bidscube.sdk.utils.SDKLogger;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.VideoView;
@@ -67,8 +68,7 @@ public class IMAPlayerHandler extends FrameLayout {
 
         FrameLayout.LayoutParams videoParams = new FrameLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT,
-                LayoutParams.MATCH_PARENT
-        );
+                LayoutParams.MATCH_PARENT);
         videoParams.gravity = Gravity.CENTER;
         videoView.setLayoutParams(videoParams);
 
@@ -97,20 +97,20 @@ public class IMAPlayerHandler extends FrameLayout {
         try {
 
             setOnClickListener(v -> {
-                Log.d("IMAPlayerHandler", "Video player clicked - opening: " + redirectUrl);
+                SDKLogger.d("IMAPlayerHandler", "Video player clicked - opening: " + redirectUrl);
                 openUrlInBrowser(redirectUrl);
             });
 
             if (videoView != null) {
                 videoView.setOnClickListener(v -> {
-                    Log.d("IMAPlayerHandler", "VideoView clicked - opening: " + redirectUrl);
+                    SDKLogger.d("IMAPlayerHandler", "VideoView clicked - opening: " + redirectUrl);
                     openUrlInBrowser(redirectUrl);
                 });
             }
 
-            Log.d("IMAPlayerHandler", "Click listener set up to open: " + redirectUrl);
+            SDKLogger.d("IMAPlayerHandler", "Click listener set up to open: " + redirectUrl);
         } catch (Exception e) {
-            Log.e("IMAPlayerHandler", "Error setting up click listener: " + e.getMessage());
+            SDKLogger.e("IMAPlayerHandler", "Error setting up click listener: " + e.getMessage());
         }
     }
 
@@ -126,12 +126,12 @@ public class IMAPlayerHandler extends FrameLayout {
             android.content.Context context = getContext();
             if (context != null) {
                 context.startActivity(intent);
-                Log.d("IMAPlayerHandler", "Opened URL in browser: " + url);
+                SDKLogger.d("IMAPlayerHandler", "Opened URL in browser: " + url);
             } else {
-                Log.e("IMAPlayerHandler", "Context is null, cannot open URL");
+                SDKLogger.e("IMAPlayerHandler", "Context is null, cannot open URL");
             }
         } catch (Exception e) {
-            Log.e("IMAPlayerHandler", "Error opening URL in browser: " + e.getMessage());
+            SDKLogger.e("IMAPlayerHandler", "Error opening URL in browser: " + e.getMessage());
         }
     }
 
@@ -151,11 +151,11 @@ public class IMAPlayerHandler extends FrameLayout {
             adsManager.init();
 
             adsManager.addAdEventListener(adEvent -> {
-                Log.d("IMAPlayerHandler", "Ad event: " + adEvent.getType());
+                SDKLogger.d("IMAPlayerHandler", "Ad event: " + adEvent.getType());
 
                 switch (adEvent.getType()) {
                     case LOADED:
-                        Log.d(eventsTag, "Ad loaded");
+                        SDKLogger.d(eventsTag, "Ad loaded");
                         isVideoPlaying = true;
 
                         postDelayed(() -> {
@@ -166,17 +166,17 @@ public class IMAPlayerHandler extends FrameLayout {
                         break;
 
                     case STARTED:
-                        Log.d(eventsTag, "Ad started");
+                        SDKLogger.d(eventsTag, "Ad started");
                         isVideoPlaying = true;
                         break;
 
                     case CLICKED:
-                        Log.d(eventsTag, "Ad click-through URL clicked");
+                        SDKLogger.d(eventsTag, "Ad click-through URL clicked");
 
                         break;
 
                     case COMPLETED:
-                        Log.d(eventsTag, "Ad completed");
+                        SDKLogger.d(eventsTag, "Ad completed");
                         isVideoPlaying = false;
                         hideSkipButton();
 
@@ -186,7 +186,7 @@ public class IMAPlayerHandler extends FrameLayout {
                         break;
 
                     case SKIPPED:
-                        Log.d(eventsTag, "Ad skipped");
+                        SDKLogger.d(eventsTag, "Ad skipped");
                         isVideoPlaying = false;
                         hideSkipButton();
 
@@ -196,7 +196,7 @@ public class IMAPlayerHandler extends FrameLayout {
                         break;
 
                     default:
-                        Log.d(eventsTag, "Other ad event: " + adEvent.getType());
+                        SDKLogger.d(eventsTag, "Other ad event: " + adEvent.getType());
                         break;
                 }
             });
@@ -213,7 +213,7 @@ public class IMAPlayerHandler extends FrameLayout {
     public void skipVideo() {
         if (adsManager != null && isVideoPlaying) {
             try {
-                Log.d("IMAPlayerHandler", "Attempting to skip video ad");
+                SDKLogger.d("IMAPlayerHandler", "Attempting to skip video ad");
                 adsManager.skip();
                 isVideoPlaying = false;
                 hideSkipButton();
@@ -222,9 +222,9 @@ public class IMAPlayerHandler extends FrameLayout {
                     completionListener.onVideoSkipped();
                 }
 
-                Log.d("IMAPlayerHandler", "Video ad skipped successfully");
+                SDKLogger.d("IMAPlayerHandler", "Video ad skipped successfully");
             } catch (Exception e) {
-                Log.e("IMAPlayerHandler", "Error skipping video ad: " + e.getMessage());
+                SDKLogger.e("IMAPlayerHandler", "Error skipping video ad: " + e.getMessage());
 
                 if (completionListener != null) {
                     completionListener.onVideoSkipped();

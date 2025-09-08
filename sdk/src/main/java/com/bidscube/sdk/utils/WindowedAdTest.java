@@ -24,7 +24,7 @@ public class WindowedAdTest {
      * @return The test layout containing all components
      */
     public static View createWindowedAdTestLayout(Context context) {
-        Log.d(TAG, "Creating windowed ad test layout...");
+        SDKLogger.d(TAG, "Creating windowed ad test layout...");
 
         FrameLayout mainContainer = new FrameLayout(context);
         mainContainer.setLayoutParams(new FrameLayout.LayoutParams(
@@ -45,7 +45,7 @@ public class WindowedAdTest {
         View mainContent = createMainContentWithScroll(context);
         mainContainer.addView(mainContent);
         
-        Log.d(TAG, "Windowed ad test layout created successfully");
+        SDKLogger.d(TAG, "Windowed ad test layout created successfully");
         return mainContainer;
     }
     
@@ -70,7 +70,7 @@ public class WindowedAdTest {
         
         header.addView(headerText);
         
-        Log.d(TAG, "Header created - attached to top of current window");
+        SDKLogger.d(TAG, "Header created - attached to top of current window");
         return header;
     }
     
@@ -97,7 +97,7 @@ public class WindowedAdTest {
         
         footer.addView(footerText);
         
-        Log.d(TAG, "Footer created - attached to bottom of current window");
+        SDKLogger.d(TAG, "Footer created - attached to bottom of current window");
         return footer;
     }
     
@@ -134,7 +134,7 @@ public class WindowedAdTest {
         sidebarContent.setPadding(0, 20, 0, 0);
         sidebar.addView(sidebarContent);
         
-        Log.d(TAG, "Sidebar created - attached to left side");
+        SDKLogger.d(TAG, "Sidebar created - attached to left side");
         return sidebar;
     }
     
@@ -189,7 +189,7 @@ public class WindowedAdTest {
         scrollView.addView(content);
         mainContent.addView(scrollView);
         
-        Log.d(TAG, "Main content with scroll view created");
+        SDKLogger.d(TAG, "Main content with scroll view created");
         return mainContent;
     }
     
@@ -231,7 +231,7 @@ public class WindowedAdTest {
      * @param position The desired position (TOP, CENTER, BOTTOM, LEFT, RIGHT)
      */
     public static void testWindowedAdPositioning(View layout, View adView, String position) {
-        Log.d(TAG, "Testing windowed ad positioning: " + position);
+        SDKLogger.d(TAG, "Testing windowed ad positioning: " + position);
         
         if (layout instanceof FrameLayout) {
             FrameLayout frameLayout = (FrameLayout) layout;
@@ -284,10 +284,10 @@ public class WindowedAdTest {
 
             frameLayout.addView(adView);
             
-            Log.d(TAG, "Windowed ad positioned at: " + position);
+            SDKLogger.d(TAG, "Windowed ad positioned at: " + position);
             
         } else {
-            Log.e(TAG, "Layout is not a FrameLayout, cannot position ad");
+            SDKLogger.e(TAG, "Layout is not a FrameLayout, cannot position ad");
         }
     }
     
@@ -296,30 +296,30 @@ public class WindowedAdTest {
      * @param layout The layout to test
      */
     public static void testScrollBehavior(View layout) {
-        Log.d(TAG, "Testing scroll behavior with windowed ads...");
+        SDKLogger.d(TAG, "Testing scroll behavior with windowed ads...");
 
         ScrollView scrollView = findScrollView(layout);
         if (scrollView != null) {
-            Log.d(TAG, "ScrollView found - testing scroll behavior");
+            SDKLogger.d(TAG, "ScrollView found - testing scroll behavior");
 
             scrollView.post(() -> {
 
                 scrollView.smoothScrollTo(0, scrollView.getChildAt(0).getHeight() / 2);
-                Log.d(TAG, "Scrolled to middle position");
+                SDKLogger.d(TAG, "Scrolled to middle position");
 
                 scrollView.postDelayed(() -> {
                     scrollView.smoothScrollTo(0, scrollView.getChildAt(0).getHeight());
-                    Log.d(TAG, "Scrolled to bottom position");
+                    SDKLogger.d(TAG, "Scrolled to bottom position");
                 }, 2000);
 
                 scrollView.postDelayed(() -> {
                     scrollView.smoothScrollTo(0, 0);
-                    Log.d(TAG, "Scrolled to top position");
+                    SDKLogger.d(TAG, "Scrolled to top position");
                 }, 4000);
             });
             
         } else {
-            Log.e(TAG, "ScrollView not found in layout");
+            SDKLogger.e(TAG, "ScrollView not found in layout");
         }
     }
     
@@ -350,49 +350,49 @@ public class WindowedAdTest {
      * @return true if all requirements are met
      */
     public static boolean validateWindowedAdRequirements(View layout) {
-        Log.d(TAG, "Validating windowed ad positioning requirements...");
+        SDKLogger.d(TAG, "Validating windowed ad positioning requirements...");
         
         boolean isValid = true;
 
         if (!hasHeader(layout)) {
-            Log.e(TAG, "✗ Missing header attached to top of current window");
+            SDKLogger.e(TAG, "✗ Missing header attached to top of current window");
             isValid = false;
         } else {
-            Log.d(TAG, "✓ Header found - attached to top of current window");
+            SDKLogger.d(TAG, "✓ Header found - attached to top of current window");
         }
 
         if (!hasFooter(layout)) {
-            Log.e(TAG, "✗ Missing footer attached to bottom of current window");
+            SDKLogger.e(TAG, "✗ Missing footer attached to bottom of current window");
             isValid = false;
         } else {
-            Log.d(TAG, "✓ Footer found - attached to bottom of current window");
+            SDKLogger.d(TAG, "✓ Footer found - attached to bottom of current window");
         }
 
         if (!hasSidebar(layout)) {
-            Log.e(TAG, "✗ Missing sidebar attached to left/right side");
+            SDKLogger.e(TAG, "✗ Missing sidebar attached to left/right side");
             isValid = false;
         } else {
-            Log.d(TAG, "✓ Sidebar found - attached to left side");
+            SDKLogger.d(TAG, "✓ Sidebar found - attached to left side");
         }
 
         if (!hasScrollView(layout)) {
-            Log.e(TAG, "✗ Missing scroll view for content");
+            SDKLogger.e(TAG, "✗ Missing scroll view for content");
             isValid = false;
         } else {
-            Log.d(TAG, "✓ Scroll view found - content can scroll");
+            SDKLogger.d(TAG, "✓ Scroll view found - content can scroll");
         }
 
         if (!(layout instanceof FrameLayout)) {
-            Log.e(TAG, "✗ Layout must be FrameLayout for proper windowed ad positioning");
+            SDKLogger.e(TAG, "✗ Layout must be FrameLayout for proper windowed ad positioning");
             isValid = false;
         } else {
-            Log.d(TAG, "✓ Layout is FrameLayout - proper positioning supported");
+            SDKLogger.d(TAG, "✓ Layout is FrameLayout - proper positioning supported");
         }
         
         if (isValid) {
-            Log.d(TAG, "✓ All windowed ad positioning requirements met!");
+            SDKLogger.d(TAG, "✓ All windowed ad positioning requirements met!");
         } else {
-            Log.e(TAG, "✗ Some windowed ad positioning requirements not met");
+            SDKLogger.e(TAG, "✗ Some windowed ad positioning requirements not met");
         }
         
         return isValid;

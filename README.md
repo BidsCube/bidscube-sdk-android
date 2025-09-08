@@ -5,24 +5,32 @@ A comprehensive Android SDK for displaying various types of ads including image 
 ## 📱 Features
 
 - **Multiple Ad Types**: Image, Video, Native, and Skippable Video ads
-- **Display Modes**: Full-screen and windowed display options
+- **Display Modes**: Full-screen and windowed display options (auto-selected by server response, with manual override)
 - **Ad Positioning**: Control ad placement (header, footer, sidebar, above/below fold)
 - **Consent Management**: Built-in GDPR and CCPA compliance
-- 
+-
 ## 🚀 Quick Start
 
-### 1. Add Dependencies
+### 1. Add Dependency
 
-Add the following to your `app/build.gradle`:
+Add the SDK dependency to your `app/build.gradle` (Kotlin DSL shown):
 
-```gradle
+```kotlin
 dependencies {
-    implementation 'com.google.android.gms:play-services-ads-identifier:18.0.1'
-    implementation 'com.google.android.ump:user-messaging-platform:2.1.0'
-    implementation 'androidx.media3:media3-exoplayer:1.2.0'
-    implementation 'androidx.media3:media3-ui:1.2.0'
+    implementation("com.bidscube:bidscube-sdk:1.0.1")
 }
 ```
+
+Make sure you have repositories configured:
+
+```kotlin
+repositories {
+    google()
+    mavenCentral()
+}
+```
+
+The SDK will bring required libraries transitively (Google UMP, Ads Identifier, Media3, etc.).
 
 ### 2. Initialize SDK
 
@@ -40,7 +48,7 @@ SDKConfig config = new SDKConfig.Builder(this)
 BidscubeSDK.initialize(this, config);
 ```
 
-**✨ Automatic App Detection**: The SDK automatically detects your app's ID, name, version, language, and user agent from the Android manifest and system. No need to manually specify these values!
+**✨ Automatic App Detection**: The SDK automatically detects your app's ID, name, version, language, and user agent from the Android manifest and system.
 
 ### 3. Show Your First Ad
 
@@ -49,18 +57,14 @@ import com.bidscube.sdk.interfaces.AdCallback;
 
 AdCallback callback = new AdCallback() {
     @Override
-    public void onAdLoaded(String placementId) {
-        Log.d("Ad", "Ad loaded successfully");
-    }
-    
-    @Override
-    public void onAdFailed(String placementId, int errorCode, String errorMessage) {
-        Log.e("Ad", "Ad failed: " + errorMessage);
-    }
+    public void onAdLoaded(String placementId) {}
 
+    @Override
+    public void onAdFailed(String placementId, int errorCode, String errorMessage) {}
 };
 
-BidscubeSDK.showImageAdWindowed("19481", callback);
+// Display mode is determined by server response position
+BidscubeSDK.showImageAd("19481", callback);
 ```
 
 ## 📋 Ad Types
@@ -68,31 +72,31 @@ BidscubeSDK.showImageAdWindowed("19481", callback);
 ### Image Ads
 
 ```java
+BidscubeSDK.showImageAd("19481", callback);
 
-BidscubeSDK.showImageAdFullScreen("19481", callback);
-
-BidscubeSDK.showImageAdWindowed("19481", callback);
+// Or get a View to embed in your layout
+View imageView = BidscubeSDK.getImageAdView("19481", callback);
 ```
 
 ### Video Ads
 
 ```java
+BidscubeSDK.showVideoAd("19483", callback);
 
-BidscubeSDK.showVideoAdFullScreen("19483", callback);
+// Skippable video with custom CTA text
+BidscubeSDK.showSkippableVideoAd("19483", "Install Now", callback);
 
-BidscubeSDK.showVideoAdWindowed("19483", callback);
-
-BidscubeSDK.showSkippableVideoAdFullScreen("19483", "Install Now", callback);
-BidscubeSDK.showSkippableVideoAdWindowed("19483", "Shop Now", callback);
+// Or get a View to embed
+View videoView = BidscubeSDK.getVideoAdView("19483", callback);
 ```
 
 ### Native Ads
 
 ```java
+BidscubeSDK.showNativeAd("19487", callback);
 
-BidscubeSDK.showNativeAdFullScreen("19487", callback);
-
-BidscubeSDK.showNativeAdWindowed("19487", callback);
+// Or get a View to embed
+View nativeView = BidscubeSDK.getNativeAdView("19487", callback);
 ```
 
 ## 🎯 Ad Positioning
@@ -104,10 +108,9 @@ The SDK supports automatic ad positioning based on server response, with manual 
 Ads are automatically positioned based on the `position` field in the server response:
 
 ```java
-
-BidscubeSDK.showImageAdWindowed("19481", callback);
-BidscubeSDK.showVideoAdWindowed("19483", callback);
-BidscubeSDK.showNativeAdWindowed("19487", callback);
+BidscubeSDK.showImageAd("19481", callback);
+BidscubeSDK.showVideoAd("19483", callback);
+BidscubeSDK.showNativeAd("19487", callback);
 ```
 
 **Response Position Values:**
@@ -134,7 +137,7 @@ BidscubeSDK.setAdPosition(AdPosition.ABOVE_THE_FOLD);
 BidscubeSDK.setAdPosition(AdPosition.BELOW_THE_FOLD);
 BidscubeSDK.setAdPosition(AdPosition.UNKNOWN);
 
-BidscubeSDK.showImageAdWindowed("19481", callback);
+BidscubeSDK.showImageAd("19481", callback);
 ```
 
 ### Smart Positioning (Position 2)
@@ -146,11 +149,10 @@ When the response indicates position `2` (maybe depending on screen size):
 ### Get Current Position
 
 ```java
+import com.bidscube.sdk.models.enums.AdPosition;
 
 AdPosition effectivePosition = BidscubeSDK.getEffectiveAdPosition();
-
 AdPosition manualPosition = BidscubeSDK.getCurrentAdPosition();
-
 AdPosition responsePosition = BidscubeSDK.getResponseAdPosition();
 ```
 
@@ -165,60 +167,49 @@ BidscubeSDK.requestConsentInfoUpdate(new ConsentCallback() {
     @Override
     public void onConsentInfoUpdated() {
         if (BidscubeSDK.isConsentRequired()) {
-
+            // Within this callback, `this` is a ConsentCallback
             BidscubeSDK.showConsentForm(this);
         } else {
-
             showAds();
         }
     }
-    
+
     @Override
     public void onConsentGranted() {
-
         showAds();
     }
-    
+
     @Override
     public void onConsentDenied() {
-
         showAlternativeContent();
     }
-
 });
 ```
 
 ### Check Consent Status
 
 ```java
-
 boolean isRequired = BidscubeSDK.isConsentRequired();
-
 boolean hasAdsConsent = BidscubeSDK.hasAdsConsent();
-
 boolean hasAnalyticsConsent = BidscubeSDK.hasAnalyticsConsent();
-
 String summary = BidscubeSDK.getConsentStatusSummary();
 ```
 
 ### Debug Mode
 
 ```java
-
 BidscubeSDK.enableConsentDebugMode("your_test_device_id");
-
 BidscubeSDK.resetConsent();
 ```
 
 ## 🎨 Customization
 
-### Custom CTA Button Text
+### Custom CTA Button Text (Skippable Video)
 
 ```java
-
-BidscubeSDK.showSkippableVideoAdWindowed("19483", "Shop Now", callback);
-BidscubeSDK.showSkippableVideoAdWindowed("19483", "Learn More", callback);
-BidscubeSDK.showSkippableVideoAdWindowed("19483", "Get Started", callback);
+BidscubeSDK.showSkippableVideoAd("19483", "Shop Now", callback);
+BidscubeSDK.showSkippableVideoAd("19483", "Learn More", callback);
+BidscubeSDK.showSkippableVideoAd("19483", "Get Started", callback);
 ```
 
 ### Native Ad Styling
@@ -231,9 +222,9 @@ NativeAdView nativeAdView = new NativeAdView(context);
 nativeAdView.setCTAText("Shop Now");
 
 nativeAdView.setCustomStyle(
-    Color.WHITE,    
-    Color.BLACK,    
-    Color.parseColor("#FF5722")  
+    Color.WHITE,
+    Color.BLACK,
+    Color.parseColor("#FF5722")
 );
 
 nativeAdView.setCTAButton("Install Now", Color.BLUE, Color.WHITE);
@@ -241,52 +232,25 @@ nativeAdView.setCTAButton("Install Now", Color.BLUE, Color.WHITE);
 
 ## 📱 Complete Example
 
-Here's a complete example showing how to integrate the SDK:
-
 ```java
 public class MainActivity extends AppCompatActivity {
-    
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        
-        initializeSDK();
+
+        SDKConfig config = new SDKConfig.Builder(this)
+            .enableLogging(true)
+            .enableDebugMode(false)
+            .build();
+
+        BidscubeSDK.initialize(this, config);
         setupConsent();
     }
-    
-    private void initializeSDK() {
-        try {
-            SDKConfig config = new SDKConfig.Builder(this)
-                .enableLogging(true)
-                .enableDebugMode(false)
-                .build();
-            
-            BidscubeSDK.initialize(this, config);
 
-            new Thread(() -> {
-                while (!BidscubeSDK.isInitialized()) {
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException e) {
-                        break;
-                    }
-                }
-                
-                runOnUiThread(() -> {
-
-                    setupConsent();
-                });
-            }).start();
-            
-        } catch (Exception e) {
-            Log.e("MainActivity", "SDK initialization failed: " + e.getMessage());
-        }
-    }
-    
     private void setupConsent() {
         if (!BidscubeSDK.isInitialized()) return;
-        
+
         BidscubeSDK.requestConsentInfoUpdate(new ConsentCallback() {
             @Override
             public void onConsentInfoUpdated() {
@@ -296,46 +260,34 @@ public class MainActivity extends AppCompatActivity {
                     showAds();
                 }
             }
-            
+
             @Override
             public void onConsentGranted() {
                 showAds();
             }
-            
+
             @Override
             public void onConsentDenied() {
                 showAlternativeContent();
             }
-
         });
     }
-    
+
     private void showAds() {
         if (!BidscubeSDK.hasAdsConsent()) return;
-        
-        AdCallback callback = new AdCallback() {
-            @Override
-            public void onAdLoaded(String placementId) {
-                Log.d("Ad", "Ad loaded: " + placementId);
-            }
-            
-            @Override
-            public void onAdFailed(String placementId, int errorCode, String errorMessage) {
-                Log.e("Ad", "Ad failed: " + errorMessage);
-            }
 
+        AdCallback callback = new AdCallback() {
+            @Override public void onAdLoaded(String placementId) {}
+            @Override public void onAdFailed(String placementId, int errorCode, String errorMessage) {}
         };
 
-        BidscubeSDK.showImageAdWindowed("19481", callback);
-        BidscubeSDK.showVideoAdWindowed("19483", callback);
-        BidscubeSDK.showNativeAdWindowed("19487", callback);
+        BidscubeSDK.showImageAd("19481", callback);
+        BidscubeSDK.showVideoAd("19483", callback);
+        BidscubeSDK.showNativeAd("19487", callback);
     }
-    
-    private void showAlternativeContent() {
 
-        Log.d("MainActivity", "Showing alternative content");
-    }
-    
+    private void showAlternativeContent() {}
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
@@ -351,19 +303,17 @@ public class MainActivity extends AppCompatActivity {
 ### SDKConfig Builder
 
 ```java
-
 SDKConfig config = new SDKConfig.Builder(this)
-    .enableLogging(true)               
-    .enableDebugMode(false)            
-    .defaultAdTimeout(30000)           
-    .defaultAdPosition("UNKNOWN")      
+    .enableLogging(true)
+    .enableDebugMode(false)
+    .defaultAdTimeout(30000)
+    .defaultAdPosition("UNKNOWN")
     .build();
-
 ```
 
 **✨ Automatic Detection**: The SDK automatically detects:
 - **App ID**: Package name from manifest
-- **App Name**: Application label from manifest  
+- **App Name**: Application label from manifest
 - **App Version**: Version name/code from manifest
 - **Language**: Device language setting
 - **User Agent**: SDK version + device info
@@ -371,11 +321,13 @@ SDKConfig config = new SDKConfig.Builder(this)
 ### Ad Position Options
 
 - `UNKNOWN` - No position regulation, natural display
+- `ABOVE_THE_FOLD` - Position above the fold
+- `DEPEND ON SCREEN SIZE` - Depending on the screen size
+- `BELOW_THE_FOLD` - Position below the fold
 - `HEADER` - Position at top of screen
 - `FOOTER` - Position at bottom of screen
 - `SIDEBAR` - Position on side of screen
-- `ABOVE_THE_FOLD` - Position above the fold
-- `BELOW_THE_FOLD` - Position below the fold
+- `FULL_SCREEN` - Full screen ad
 
 ## 📊 Callback Methods
 
@@ -421,17 +373,16 @@ The SDK includes several test activities for development:
 
 - `SDKTestActivity` - Basic SDK functionality testing
 - `ConsentTestActivity` - Consent management testing
-- `VideoAdTestActivity` - Video ad testing
 - `WindowedAdTestActivity` - Windowed ad positioning testing
 
 ### Debug Mode
 
 ```java
-
 BidscubeSDK.enableConsentDebugMode("test_device_123");
 
 boolean isReady = BidscubeSDK.isInitialized();
 
+import com.bidscube.sdk.models.enums.AdPosition;
 AdPosition position = BidscubeSDK.getCurrentAdPosition();
 ```
 
@@ -441,13 +392,11 @@ AdPosition position = BidscubeSDK.getCurrentAdPosition();
 
 ```java
 try {
-    BidscubeSDK.showImageAdWindowed("19481", callback);
+    BidscubeSDK.showImageAd("19481", callback);
 } catch (IllegalStateException e) {
-
-    Log.e("Ad", "SDK not initialized: " + e.getMessage());
+    // SDK not initialized
 } catch (Exception e) {
-
-    Log.e("Ad", "Unexpected error: " + e.getMessage());
+    // Unexpected error
 }
 ```
 
@@ -460,10 +409,10 @@ try {
 
 ## 📱 Platform Requirements
 
-- **Minimum SDK**: API 21 (Android 5.0)
-- **Target SDK**: API 34 (Android 14)
-- **Java Version**: 8 or higher
-- **Kotlin**: 1.3+ (optional)
+- **Minimum SDK**: API 24 (Android 7.0)
+- **Target/Compile SDK**: API 35 (Android 15)
+- **Java Version**: 11+
+- **Kotlin**: 2.0+
 
 ## 🔒 Permissions
 
@@ -477,7 +426,6 @@ Add these permissions to your `AndroidManifest.xml`:
 
 ## 📚 Additional Resources
 
-- **Example Projects**: See the `examples` package for complete usage examples
 - **Test Activities**: Use the test activities for development and debugging
 - **VAST Support**: Full VAST XML parsing for video ads
 - **Native Ad Models**: Complete OpenRTB Native Ads specification support

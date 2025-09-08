@@ -20,10 +20,12 @@ import com.bidscube.sdk.models.enums.AdPosition;
 import com.bidscube.sdk.ads.ImageAdType;
 import com.bidscube.sdk.ads.VideoAdType;
 import com.bidscube.sdk.ads.NativeAdType;
+import com.bidscube.sdk.utils.SDKLogger;
 
 /**
  * Main implementation of Bidscube SDK
- * This class handles all ad operations and provides a clean interface for external applications
+ * This class handles all ad operations and provides a clean interface for
+ * external applications
  */
 @UnstableApi
 public class BidscubeSDKImpl implements IBidscubeSDK {
@@ -41,16 +43,20 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
     @Override
     public void initialize(Context context, SDKConfig config) {
         if (isInitialized) {
-            Log.w(TAG, "SDK already initialized");
+            SDKLogger.w(TAG, "SDK already initialized");
             return;
         }
 
         this.context = context;
         this.config = config;
 
+        // Configure logging based on SDKConfig
+        SDKLogger.setLoggingEnabled(config.isEnableLogging());
+        SDKLogger.setDefaultTag(TAG);
+
         try {
 
-            deviceInfoProvider = new DeviceInfoProvider(context);
+            deviceInfoProvider = new DeviceInfoProvider(context, config);
             consentManager = deviceInfoProvider.getConsentManager();
 
             deviceInfoProvider.getDeviceInfoAsync(deviceInfo -> {
@@ -59,7 +65,7 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
                 this.adDisplayManager = new AdDisplayManager(context, deviceInfo);
 
                 this.isInitialized = true;
-                Log.d(TAG, "SDK initialized successfully");
+                SDKLogger.d(TAG, "SDK initialized successfully");
 
                 if (config.getDefaultAdPosition() != null) {
                     AdPosition position = AdPosition.fromString(config.getDefaultAdPosition());
@@ -68,22 +74,22 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             });
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to initialize SDK: " + e.getMessage());
+            SDKLogger.e(TAG, "Failed to initialize SDK: " + e.getMessage(), e);
             throw new RuntimeException("SDK initialization failed", e);
         }
     }
 
     @Override
-    public void showImageAdFullScreen(String placementId, AdCallback callback) {
+    public void showImageAd(String placementId, AdCallback callback) {
         checkInitialization();
-        if (callback != null) callback.onAdLoading(placementId);
+        if (callback != null)
+            callback.onAdLoading(placementId);
 
         try {
-
             ImageAdType imageAdType = new ImageAdType(placementId);
             String url = imageAdType.buildRequestUrl(deviceInfo).toString();
 
-            adDisplayManager.showImageAdFullScreen(url);
+            adDisplayManager.showImageAdWithResponsePosition(url);
 
             if (callback != null) {
                 callback.onAdLoaded(placementId);
@@ -91,7 +97,7 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to show image ad: " + e.getMessage());
+            SDKLogger.e(TAG, "Failed to show image ad: " + e.getMessage(), e);
             if (callback != null) {
                 callback.onAdFailed(placementId, -1, "Failed to show image ad: " + e.getMessage());
             }
@@ -99,41 +105,16 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
     }
 
     @Override
-    public void showImageAdWindowed(String placementId, AdCallback callback) {
+    public void showVideoAd(String placementId, AdCallback callback) {
         checkInitialization();
-        if (callback != null) callback.onAdLoading(placementId);
+        if (callback != null)
+            callback.onAdLoading(placementId);
 
         try {
-
-            ImageAdType imageAdType = new ImageAdType(placementId);
-            String url = imageAdType.buildRequestUrl(deviceInfo).toString();
-
-            adDisplayManager.showImageAdWindowedInternal(url);
-
-            if (callback != null) {
-                callback.onAdLoaded(placementId);
-                callback.onAdDisplayed(placementId);
-            }
-
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to show image ad: " + e.getMessage());
-            if (callback != null) {
-                callback.onAdFailed(placementId, -1, "Failed to show image ad: " + e.getMessage());
-            }
-        }
-    }
-
-    @Override
-    public void showVideoAdFullScreen(String placementId, AdCallback callback) {
-        checkInitialization();
-        if (callback != null) callback.onAdLoading(placementId);
-
-        try {
-
             VideoAdType videoAdType = new VideoAdType(placementId);
             String url = videoAdType.buildRequestUrl(deviceInfo).toString();
 
-            adDisplayManager.showVideoAdFullScreen(url);
+            adDisplayManager.showVideoAdWithResponsePosition(url);
 
             if (callback != null) {
                 callback.onAdLoaded(placementId);
@@ -142,7 +123,7 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to show video ad: " + e.getMessage());
+            SDKLogger.e(TAG, "Failed to show video ad: " + e.getMessage(), e);
             if (callback != null) {
                 callback.onAdFailed(placementId, -1, "Failed to show video ad: " + e.getMessage());
             }
@@ -150,16 +131,22 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
     }
 
     @Override
-    public void showVideoAdWindowed(String placementId, AdCallback callback) {
+    public void showSkippableVideoAd(String placementId, String installButtonText, AdCallback callback) {
         checkInitialization();
-        if (callback != null) callback.onAdLoading(placementId);
+        if (callback != null)
+            callback.onAdLoading(placementId);
 
         try {
 
-            VideoAdType videoAdType = new VideoAdType(placementId);
-            String url = videoAdType.buildRequestUrl(deviceInfo).toString();
+            AdPosition effectivePosition = adDisplayManager.getEffectiveAdPosition();
+            boolean shouldShowFullScreen = shouldShowFullScreen(effectivePosition);
 
-            adDisplayManager.showVideoAdWindowedInternal(url);
+            if (shouldShowFullScreen) {
+                adDisplayManager.showSkippableVideoAdFullScreen(installButtonText);
+            } else {
+                adDisplayManager.showSkippableVideoAdFullScreen(installButtonText);
+                //adDisplayManager.showSkippableVideoAdWindowed(installButtonText);
+            }
 
             if (callback != null) {
                 callback.onAdLoaded(placementId);
@@ -168,30 +155,7 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to show video ad: " + e.getMessage());
-            if (callback != null) {
-                callback.onAdFailed(placementId, -1, "Failed to show video ad: " + e.getMessage());
-            }
-        }
-    }
-
-    @Override
-    public void showSkippableVideoAdFullScreen(String placementId, String installButtonText, AdCallback callback) {
-        checkInitialization();
-        if (callback != null) callback.onAdLoading(placementId);
-
-        try {
-
-            adDisplayManager.showSkippableVideoAdFullScreen(installButtonText);
-
-            if (callback != null) {
-                callback.onAdLoaded(placementId);
-                callback.onAdDisplayed(placementId);
-                callback.onVideoAdStarted(placementId);
-            }
-
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to show skippable video ad: " + e.getMessage());
+            SDKLogger.e(TAG, "Failed to show skippable video ad: " + e.getMessage(), e);
             if (callback != null) {
                 callback.onAdFailed(placementId, -1, "Failed to show skippable video ad: " + e.getMessage());
             }
@@ -199,39 +163,24 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
     }
 
     @Override
-    public void showSkippableVideoAdWindowed(String placementId, String installButtonText, AdCallback callback) {
+    public void showNativeAd(String placementId, AdCallback callback) {
         checkInitialization();
-        if (callback != null) callback.onAdLoading(placementId);
+        if (callback != null)
+            callback.onAdLoading(placementId);
 
         try {
-
-            adDisplayManager.showSkippableVideoAdWindowed(installButtonText);
-
-            if (callback != null) {
-                callback.onAdLoaded(placementId);
-                callback.onAdDisplayed(placementId);
-                callback.onVideoAdStarted(placementId);
-            }
-
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to show skippable video ad: " + e.getMessage());
-            if (callback != null) {
-                callback.onAdFailed(placementId, -1, "Failed to show skippable video ad: " + e.getMessage());
-            }
-        }
-    }
-
-    @Override
-    public void showNativeAdFullScreen(String placementId, AdCallback callback) {
-        checkInitialization();
-        if (callback != null) callback.onAdLoading(placementId);
-
-        try {
-
             NativeAdType nativeAdType = new NativeAdType(placementId);
             String url = nativeAdType.buildRequestUrl(deviceInfo).toString();
 
-            adDisplayManager.showAdNativeFullScreenFromUrl(url);
+            // Determine display mode based on response position
+            AdPosition effectivePosition = adDisplayManager.getEffectiveAdPosition();
+            boolean shouldShowFullScreen = shouldShowFullScreen(effectivePosition);
+
+            if (shouldShowFullScreen) {
+                adDisplayManager.showAdNativeFullScreenFromUrl(url);
+            } else {
+                adDisplayManager.showAdNativeWindowedFromUrl(url);
+            }
 
             if (callback != null) {
                 callback.onAdLoaded(placementId);
@@ -239,49 +188,47 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to show native ad: " + e.getMessage());
+            SDKLogger.e(TAG, "Failed to show native ad: " + e.getMessage(), e);
             if (callback != null) {
                 callback.onAdFailed(placementId, -1, "Failed to show native ad: " + e.getMessage());
             }
         }
     }
 
-    @Override
-    public void showNativeAdWindowed(String placementId, AdCallback callback) {
-        checkInitialization();
-        if (callback != null) callback.onAdLoading(placementId);
-
-        try {
-
-            NativeAdType nativeAdType = new NativeAdType(placementId);
-            String url = nativeAdType.buildRequestUrl(deviceInfo).toString();
-
-            adDisplayManager.showAdNativeWindowedFromUrl(url);
-
-            if (callback != null) {
-                callback.onAdLoaded(placementId);
-                callback.onAdDisplayed(placementId);
-            }
-
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to show native ad: " + e.getMessage());
-            if (callback != null) {
-                callback.onAdFailed(placementId, -1, "Failed to show native ad: " + e.getMessage());
-            }
+    /**
+     * Determine if ad should be shown in full screen based on position
+     *
+     * @param position Ad position from response
+     * @return true if should show full screen, false for windowed
+     */
+    private boolean shouldShowFullScreen(AdPosition position) {
+        switch (position) {
+            case FULL_SCREEN:
+                return true;
+            case UNKNOWN:
+            case ABOVE_THE_FOLD:
+            case BELOW_THE_FOLD:
+            case HEADER:
+            case FOOTER:
+            case SIDEBAR:
+            case MAYBE_DEPENDING_ON_SCREEN_SIZE:
+            default:
+                return false;
         }
     }
 
     @Override
     public View getImageAdView(String placementId, AdCallback callback) {
         checkInitialization();
-        if (callback != null) callback.onAdLoading(placementId);
+        if (callback != null)
+            callback.onAdLoading(placementId);
 
         try {
             ImageAdType imageAdType = new ImageAdType(placementId);
             String url = imageAdType.buildRequestUrl(deviceInfo).toString();
 
             View adView = adDisplayManager.getImageAdView(url, callback);
-            
+
             if (callback != null) {
                 callback.onAdLoaded(placementId);
                 callback.onAdDisplayed(placementId);
@@ -290,7 +237,7 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             return adView;
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to get image ad view: " + e.getMessage());
+            SDKLogger.e(TAG, "Failed to get image ad view: " + e.getMessage(), e);
             if (callback != null) {
                 callback.onAdFailed(placementId, -1, "Failed to get image ad view: " + e.getMessage());
             }
@@ -301,14 +248,15 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
     @Override
     public View getVideoAdView(String placementId, AdCallback callback) {
         checkInitialization();
-        if (callback != null) callback.onAdLoading(placementId);
+        if (callback != null)
+            callback.onAdLoading(placementId);
 
         try {
             VideoAdType videoAdType = new VideoAdType(placementId);
             String url = videoAdType.buildRequestUrl(deviceInfo).toString();
 
             View adView = adDisplayManager.getVideoAdView(url, callback);
-            
+
             if (callback != null) {
                 callback.onAdLoaded(placementId);
                 callback.onAdDisplayed(placementId);
@@ -318,7 +266,7 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             return adView;
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to get video ad view: " + e.getMessage());
+            SDKLogger.e(TAG, "Failed to get video ad view: " + e.getMessage(), e);
             if (callback != null) {
                 callback.onAdFailed(placementId, -1, "Failed to get video ad view: " + e.getMessage());
             }
@@ -329,14 +277,15 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
     @Override
     public View getNativeAdView(String placementId, AdCallback callback) {
         checkInitialization();
-        if (callback != null) callback.onAdLoading(placementId);
+        if (callback != null)
+            callback.onAdLoading(placementId);
 
         try {
             NativeAdType nativeAdType = new NativeAdType(placementId);
             String url = nativeAdType.buildRequestUrl(deviceInfo).toString();
 
             View adView = adDisplayManager.getNativeAdView(url, callback);
-            
+
             if (callback != null) {
                 callback.onAdLoaded(placementId);
                 callback.onAdDisplayed(placementId);
@@ -345,7 +294,7 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             return adView;
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to get native ad view: " + e.getMessage());
+            SDKLogger.e(TAG, "Failed to get native ad view: " + e.getMessage(), e);
             if (callback != null) {
                 callback.onAdFailed(placementId, -1, "Failed to get native ad view: " + e.getMessage());
             }
@@ -358,7 +307,7 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
         checkInitialization();
         if (adDisplayManager != null) {
             adDisplayManager.setAdPosition(position);
-            Log.d(TAG, "Ad position set to: " + position.getDisplayName());
+            SDKLogger.d(TAG, "Ad position set to: " + position.getDisplayName());
         }
     }
 
@@ -393,14 +342,13 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             adDisplayManager.cleanup();
         }
         isInitialized = false;
-        Log.d(TAG, "SDK cleaned up");
+        SDKLogger.d(TAG, "SDK cleaned up");
     }
 
     @Override
     public boolean isInitialized() {
         return isInitialized;
     }
-
 
     @Override
     public void requestConsentInfoUpdate(ConsentCallback callback) {
@@ -420,10 +368,9 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
                             });
                         }
 
-                    }
-            );
+                    });
         } else {
-            Log.e(TAG, "Context is not an Activity, cannot request consent info update");
+            SDKLogger.e(TAG, "Context is not an Activity, cannot request consent info update");
             if (callback != null) {
                 callback.onConsentInfoUpdateFailed(new Exception("Context is not an Activity"));
             }
@@ -437,14 +384,13 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             consentManager.loadAndShowConsentForm(
                     (Activity) context,
                     formError -> {
-                        Log.e(TAG, "Consent form error: " + formError.getMessage());
+                        SDKLogger.e(TAG, "Consent form error: " + formError.getMessage());
                         if (callback != null) {
                             callback.onConsentFormError(new Exception(formError.getMessage()));
                         }
-                    }
-            );
+                    });
         } else {
-            Log.e(TAG, "Context is not an Activity, cannot show consent form");
+            SDKLogger.e(TAG, "Context is not an Activity, cannot show consent form");
             if (callback != null) {
                 callback.onConsentFormError(new Exception("Context is not an Activity"));
             }
@@ -476,12 +422,31 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
     public void resetConsent() {
         checkInitialization();
         consentManager.resetConsent();
-        Log.d(TAG, "Consent information reset");
+        SDKLogger.d(TAG, "Consent information reset");
     }
 
     @Override
     public void enableConsentDebugMode(String deviceId) {
+        checkInitialization();
+        SDKLogger.d(TAG, "Consent debug mode enabled for device: " + deviceId);
+    }
 
+    /**
+     * Set mock consent data for testing purposes
+     * This is useful for testing Polish region scenarios
+     */
+    public void setMockConsentData(boolean gdprApplies, String gdprConsent, String additionalConsent, String gppString,
+                                   String usPrivacy) {
+        checkInitialization();
+        consentManager.setMockConsentData(gdprApplies, gdprConsent, additionalConsent, gppString, usPrivacy);
+    }
+
+    /**
+     * Set Polish region test consent data
+     */
+    public void setPolishTestConsentData(String testCase) {
+        checkInitialization();
+        consentManager.setPolishTestConsentData(testCase);
     }
 
     private void checkInitialization() {
@@ -497,5 +462,13 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
         errorView.setPadding(16, 16, 16, 16);
         errorView.setBackgroundColor(0xFFFFE0E0);
         return errorView;
+    }
+
+    public SDKConfig getConfig() {
+        return config;
+    }
+
+    public void setConfig(SDKConfig config) {
+        this.config = config;
     }
 }

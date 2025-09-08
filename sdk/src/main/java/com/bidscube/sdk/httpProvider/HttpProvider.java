@@ -3,6 +3,7 @@ package com.bidscube.sdk.httpProvider;
 import android.util.Log;
 
 import com.bidscube.sdk.network.BidscubeCallback;
+import com.bidscube.sdk.utils.SDKLogger;
 import com.bidscube.sdk.network.BidscubeResponse;
 import com.bidscube.sdk.network.BidscubeResponseParser;
 
@@ -24,18 +25,18 @@ public class HttpProvider {
                 connection.setRequestMethod("GET");
                 connection.setConnectTimeout(10000);
                 connection.setReadTimeout(10000);
-                
+
                 int responseCode = connection.getResponseCode();
-                Log.d("HttpProvider", "Response code: " + responseCode);
-                
+                SDKLogger.d("HttpProvider", "Response code: " + responseCode);
+
                 String responseBody = "";
                 if (responseCode == HttpURLConnection.HTTP_OK) {
                     java.io.InputStream is = connection.getInputStream();
                     java.util.Scanner s = new java.util.Scanner(is).useDelimiter("\\A");
                     responseBody = s.hasNext() ? s.next() : "";
                     is.close();
-                    Log.d("HttpProvider", "Response body length: " + responseBody.length());
-                    Log.v("HttpProvider", "Response body: " + responseBody);
+                    SDKLogger.d("HttpProvider", "Response body length: " + responseBody.length());
+                    SDKLogger.v("HttpProvider", "Response body: " + responseBody);
                 } else {
 
                     java.io.InputStream is = connection.getErrorStream();
@@ -43,7 +44,7 @@ public class HttpProvider {
                         java.util.Scanner s = new java.util.Scanner(is).useDelimiter("\\A");
                         responseBody = s.hasNext() ? s.next() : "";
                         is.close();
-                        Log.e("HttpProvider", "Error response: " + responseBody);
+                        SDKLogger.e("HttpProvider", "Error response: " + responseBody);
                     }
                     callback.onFail(new Exception("HTTP error: " + responseCode));
                     connection.disconnect();
@@ -53,15 +54,15 @@ public class HttpProvider {
 
                 BidscubeResponse response = BidscubeResponseParser.parse(responseBody);
                 if (response != null) {
-                    Log.d("HttpProvider", "Successfully parsed response");
+                    SDKLogger.d("HttpProvider", "Successfully parsed response");
                     callback.onSuccess(responseCode, response);
                 } else {
-                    Log.e("HttpProvider", "Failed to parse response body");
+                    SDKLogger.e("HttpProvider", "Failed to parse response body");
                     callback.onFail(new Exception("Failed to parse response"));
                 }
 
             } catch (Exception e) {
-                Log.e("HttpProvider", "Request failed: " + e.getMessage(), e);
+                SDKLogger.e("HttpProvider", "Request failed: " + e.getMessage(), e);
                 callback.onFail(e);
             }
         }).start();
@@ -74,19 +75,20 @@ public class HttpProvider {
         try {
             URL url = new URL(urlString);
             String query = url.getQuery();
-            
+
             if (query == null || query.isEmpty()) {
-                Log.v("HttpProvider", prefix + " " + urlString);
+                SDKLogger.v("HttpProvider", prefix + " " + urlString);
                 return;
             }
 
             String[] params = query.split("&");
-            
+
             StringBuilder formattedUrl = new StringBuilder();
             formattedUrl.append(prefix).append("\n");
-            formattedUrl.append("Base URL: ").append(url.getProtocol()).append("://").append(url.getHost()).append(url.getPath()).append("\n");
+            formattedUrl.append("Base URL: ").append(url.getProtocol()).append("://").append(url.getHost())
+                    .append(url.getPath()).append("\n");
             formattedUrl.append("Parameters:");
-            
+
             for (String param : params) {
                 String[] keyValue = param.split("=", 2);
                 if (keyValue.length == 2) {
@@ -98,16 +100,16 @@ public class HttpProvider {
                     } catch (Exception e) {
 
                     }
-                    
+
                     formattedUrl.append("\n  ").append(key).append(" = ").append(value);
                 }
             }
-            
-            Log.v("HttpProvider", formattedUrl.toString());
-            
+
+            SDKLogger.v("HttpProvider", formattedUrl.toString());
+
         } catch (Exception e) {
 
-            Log.v("HttpProvider", prefix + " " + urlString);
+            SDKLogger.v("HttpProvider", prefix + " " + urlString);
         }
     }
 }

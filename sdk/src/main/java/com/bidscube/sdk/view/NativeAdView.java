@@ -32,6 +32,7 @@ import com.bidscube.sdk.models.natives.Image;
 import com.bidscube.sdk.models.natives.NativeData;
 import com.bidscube.sdk.models.natives.Video;
 import com.bidscube.sdk.models.natives.NativeLink;
+import com.bidscube.sdk.utils.SDKLogger;
 
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -222,7 +223,7 @@ public class NativeAdView extends CardView {
             return;
         }
 
-        Log.d("NativeAdView", "Setting native ad with " +
+        SDKLogger.d("NativeAdView", "Setting native ad with " +
                 (ad.assets != null ? ad.assets.size() : 0) + " assets");
 
         populateView();
@@ -236,7 +237,7 @@ public class NativeAdView extends CardView {
             return;
         }
 
-        Log.d("NativeAdView", "Populating view with " + nativeAd.assets.size() + " assets");
+        SDKLogger.d("NativeAdView", "Populating view with " + nativeAd.assets.size() + " assets");
 
         Title titleAsset = null;
         Title subTitleAsset = null;
@@ -248,31 +249,31 @@ public class NativeAdView extends CardView {
 
         for (int i = 0; i < nativeAd.assets.size(); i++) {
             NativeAsset asset = nativeAd.assets.get(i);
-            Log.d("NativeAdView", "Processing asset " + i + ": id=" + asset.id +
+            SDKLogger.d("NativeAdView", "Processing asset " + i + ": id=" + asset.id +
                     ", title=" + (asset.title != null) +
                     ", img=" + (asset.img != null) +
                     ", data=" + (asset.data != null));
 
             if (asset.title != null && titleAsset == null) {
                 titleAsset = asset.title;
-                Log.d("NativeAdView", "Found title asset: " + asset.title.text);
+                SDKLogger.d("NativeAdView", "Found title asset: " + asset.title.text);
             }
 
 
             if (asset.img != null) {
                 if (imageAsset == null) {
                     imageAsset = asset.img;
-                    Log.d("NativeAdView", "Found main image asset: " + asset.img.url);
+                    SDKLogger.d("NativeAdView", "Found main image asset: " + asset.img.url);
                 } else if (iconAsset == null && asset.img.w != null && asset.img.h != null &&
                         asset.img.w <= 100 && asset.img.h <= 100) {
 
                     iconAsset = asset.img;
-                    Log.d("NativeAdView", "Found icon asset: " + asset.img.url);
+                    SDKLogger.d("NativeAdView", "Found icon asset: " + asset.img.url);
                 }
             }
 
             if (asset.data != null) {
-                Log.d("NativeAdView", "Data asset id: " + asset.id +
+                SDKLogger.d("NativeAdView", "Data asset id: " + asset.id +
                         ", type: " + (asset.data.type != null ? asset.data.type.v : "null") +
                         ", value: " + asset.data.value);
 
@@ -294,11 +295,11 @@ public class NativeAdView extends CardView {
                     switch (asset.id) {
                         case 1:
                             if (ctaAsset == null) ctaAsset = asset.data;
-                            Log.d("NativeAdView", "Found CTA asset by ID: " + asset.data.value);
+                            SDKLogger.d("NativeAdView", "Found CTA asset by ID: " + asset.data.value);
                             break;
                         case 6:
                             if (priceAsset == null) priceAsset = asset.data;
-                            Log.d("NativeAdView", "Found price asset by ID: " + asset.data.value);
+                            SDKLogger.d("NativeAdView", "Found price asset by ID: " + asset.data.value);
                             break;
                         default:
 
@@ -310,40 +311,40 @@ public class NativeAdView extends CardView {
         }
 
         if (titleAsset != null) {
-            Log.d("NativeAdView", "Setting title: " + titleAsset.text);
+            SDKLogger.d("NativeAdView", "Setting title: " + titleAsset.text);
             setTitle(titleAsset);
         }
 
         if (imageAsset != null) {
-            Log.d("NativeAdView", "Setting main image: " + imageAsset.url);
+            SDKLogger.d("NativeAdView", "Setting main image: " + imageAsset.url);
             setImage(imageAsset);
         }
 
         if (iconAsset != null) {
-            Log.d("NativeAdView", "Setting icon: " + iconAsset.url);
+            SDKLogger.d("NativeAdView", "Setting icon: " + iconAsset.url);
             setAdIcon(iconAsset.url);
         }
 
         if (descriptionAsset != null) {
-            Log.d("NativeAdView", "Setting description: " + descriptionAsset.value);
+            SDKLogger.d("NativeAdView", "Setting description: " + descriptionAsset.value);
             setData(descriptionAsset);
         }
 
         if (ctaAsset != null && !TextUtils.isEmpty(ctaAsset.value)) {
-            Log.d("NativeAdView", "Setting CTA: " + ctaAsset.value);
+            SDKLogger.d("NativeAdView", "Setting CTA: " + ctaAsset.value);
             ctaButton.setText(ctaAsset.value);
         } else {
-            Log.d("NativeAdView", "Using default CTA: Learn More");
+            SDKLogger.d("NativeAdView", "Using default CTA: Learn More");
             ctaButton.setText("Learn More");
         }
 
         if (priceAsset != null && !TextUtils.isEmpty(priceAsset.value)) {
             adSubTitle.setText(priceAsset.value);
-            Log.d("NativeAdView", "Price: " + priceAsset.value);
+            SDKLogger.d("NativeAdView", "Price: " + priceAsset.value);
 
         }
 
-        Log.d("NativeAdView", "View populated successfully");
+        SDKLogger.d("NativeAdView", "View populated successfully");
     }
 
     private void setTitle(Title title) {
@@ -391,9 +392,9 @@ public class NativeAdView extends CardView {
 
             String decodedUrl = URLDecoder.decode(fixedUrl, StandardCharsets.UTF_8.name());
 
-            Log.d("NativeAdView", "Original URL: " + url);
-            Log.d("NativeAdView", "Fixed URL: " + fixedUrl);
-            Log.d("NativeAdView", "Decoded URL: " + decodedUrl);
+            SDKLogger.d("NativeAdView", "Original URL: " + url);
+            SDKLogger.d("NativeAdView", "Fixed URL: " + fixedUrl);
+            SDKLogger.d("NativeAdView", "Decoded URL: " + decodedUrl);
 
             return decodedUrl;
         } catch (Exception e) {
@@ -410,7 +411,7 @@ public class NativeAdView extends CardView {
 
         String fixedUrl = fixMalformedUrl(imageUrl);
 
-        Log.d("NativeAdView", "Starting to load image from fixed URL: " + fixedUrl);
+        SDKLogger.d("NativeAdView", "Starting to load image from fixed URL: " + fixedUrl);
 
         mainHandler.post(() -> {
             imageView.setBackgroundColor(Color.LTGRAY);
@@ -419,7 +420,7 @@ public class NativeAdView extends CardView {
 
         imageExecutor.execute(() -> {
             try {
-                Log.d("NativeAdView", "Connecting to image URL: " + fixedUrl);
+                SDKLogger.d("NativeAdView", "Connecting to image URL: " + fixedUrl);
                 URL url = new URL(fixedUrl);
                 HttpURLConnection connection = (HttpURLConnection) url.openConnection();
                 connection.setDoInput(true);
@@ -429,7 +430,7 @@ public class NativeAdView extends CardView {
                 connection.connect();
 
                 int responseCode = connection.getResponseCode();
-                Log.d("NativeAdView", "Image response code: " + responseCode);
+                SDKLogger.d("NativeAdView", "Image response code: " + responseCode);
 
                 if (responseCode == HttpURLConnection.HTTP_OK) {
                     InputStream input = connection.getInputStream();
@@ -437,13 +438,13 @@ public class NativeAdView extends CardView {
                     input.close();
                     connection.disconnect();
 
-                    Log.d("NativeAdView", "Image loaded successfully, bitmap: " + (bitmap != null ? "valid" : "null"));
+                    SDKLogger.d("NativeAdView", "Image loaded successfully, bitmap: " + (bitmap != null ? "valid" : "null"));
 
                     mainHandler.post(() -> {
                         if (bitmap != null) {
                             imageView.setImageBitmap(bitmap);
                             imageView.setBackgroundColor(Color.TRANSPARENT);
-                            Log.d("NativeAdView", "Image set to ImageView successfully");
+                            SDKLogger.d("NativeAdView", "Image set to ImageView successfully");
                         } else {
 
                             imageView.setBackgroundColor(Color.LTGRAY);
@@ -452,7 +453,7 @@ public class NativeAdView extends CardView {
                         }
                     });
                 } else {
-                    Log.e("NativeAdView", "HTTP error: " + responseCode);
+                    SDKLogger.e("NativeAdView", "HTTP error: " + responseCode);
                     connection.disconnect();
                     mainHandler.post(() -> {
                         imageView.setBackgroundColor(Color.LTGRAY);
@@ -461,7 +462,7 @@ public class NativeAdView extends CardView {
                 }
 
             } catch (Exception e) {
-                Log.e("NativeAdView", "Error loading image: " + e.getMessage(), e);
+                SDKLogger.e("NativeAdView", "Error loading image: " + e.getMessage(), e);
                 mainHandler.post(() -> {
 
                     imageView.setBackgroundColor(Color.LTGRAY);
@@ -475,9 +476,9 @@ public class NativeAdView extends CardView {
 
 
         setOnClickListener(v -> {
-            Log.d("NativeAdView", "Main ad clicked");
+            SDKLogger.d("NativeAdView", "Main ad clicked");
             if (nativeAd != null && nativeAd.link != null && !TextUtils.isEmpty(nativeAd.link.url)) {
-                Log.d("NativeAdView", "Opening ad link: " + nativeAd.link.url);
+                SDKLogger.d("NativeAdView", "Opening ad link: " + nativeAd.link.url);
                 openAdLink(nativeAd.link.url);
             } else {
                 Log.w("NativeAdView", "Cannot open ad link: nativeAd=" + (nativeAd != null) +
@@ -490,9 +491,9 @@ public class NativeAdView extends CardView {
         });
 
         ctaButton.setOnClickListener(v -> {
-            Log.d("NativeAdView", "CTA button clicked");
+            SDKLogger.d("NativeAdView", "CTA button clicked");
             if (nativeAd != null && nativeAd.link != null && !TextUtils.isEmpty(nativeAd.link.url)) {
-                Log.d("NativeAdView", "Opening ad link from CTA: " + nativeAd.link.url);
+                SDKLogger.d("NativeAdView", "Opening ad link from CTA: " + nativeAd.link.url);
                 openAdLink(nativeAd.link.url);
             } else {
                 Log.w("NativeAdView", "Cannot open ad link from CTA: nativeAd=" + (nativeAd != null) +
@@ -505,9 +506,9 @@ public class NativeAdView extends CardView {
         });
 
         adImage.setOnClickListener(v -> {
-            Log.d("NativeAdView", "Ad image clicked");
+            SDKLogger.d("NativeAdView", "Ad image clicked");
             if (nativeAd != null && nativeAd.link != null && !TextUtils.isEmpty(nativeAd.link.url)) {
-                Log.d("NativeAdView", "Opening ad link from image: " + nativeAd.link.url);
+                SDKLogger.d("NativeAdView", "Opening ad link from image: " + nativeAd.link.url);
                 openAdLink(nativeAd.link.url);
             } else {
                 Log.w("NativeAdView", "Cannot open ad link from image: nativeAd=" + (nativeAd != null) +
@@ -528,9 +529,9 @@ public class NativeAdView extends CardView {
             Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getContext().startActivity(intent);
-            Log.d("NativeAdView", "Successfully opened ad link: " + url);
+            SDKLogger.d("NativeAdView", "Successfully opened ad link: " + url);
         } catch (Exception e) {
-            Log.e("NativeAdView", "Error opening ad link: " + e.getMessage(), e);
+            SDKLogger.e("NativeAdView", "Error opening ad link: " + e.getMessage(), e);
             Toast.makeText(getContext(), "Unable to open link", Toast.LENGTH_SHORT).show();
         }
     }

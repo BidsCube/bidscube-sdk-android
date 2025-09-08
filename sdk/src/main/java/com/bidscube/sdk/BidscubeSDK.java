@@ -12,6 +12,7 @@ import com.bidscube.sdk.interfaces.AdCallback;
 import com.bidscube.sdk.interfaces.ConsentCallback;
 import com.bidscube.sdk.interfaces.IBidscubeSDK;
 import com.bidscube.sdk.models.enums.AdPosition;
+import com.bidscube.sdk.utils.SDKLogger;
 
 /**
  * Main entry point for Bidscube SDK
@@ -25,112 +26,77 @@ public class BidscubeSDK {
 
     /**
      * Initialize the SDK with required parameters
+     *
      * @param context Application context
-     * @param config SDK configuration object
+     * @param config  SDK configuration object
      */
     @OptIn(markerClass = UnstableApi.class)
     public static void initialize(Context context, SDKConfig config) {
         if (sdkInstance != null) {
-            Log.w(TAG, "SDK already initialized");
+            SDKLogger.w(TAG, "SDK already initialized");
             return;
         }
 
         try {
             sdkInstance = new BidscubeSDKImpl();
             sdkInstance.initialize(context, config);
-            Log.d(TAG, "SDK initialized successfully");
+            SDKLogger.d(TAG, "SDK initialized successfully");
         } catch (Exception e) {
-            Log.e(TAG, "Failed to initialize SDK: " + e.getMessage());
+            SDKLogger.e(TAG, "Failed to initialize SDK: " + e.getMessage(), e);
             throw new RuntimeException("SDK initialization failed", e);
         }
     }
 
     /**
-     * Show image ad in full screen mode
+     * Show image ad - display mode determined by response position
+     *
      * @param placementId Ad placement ID
-     * @param callback Callback for ad events
+     * @param callback    Callback for ad events
      */
-    public static void showImageAdFullScreen(String placementId, AdCallback callback) {
+    public static void showImageAd(String placementId, AdCallback callback) {
         checkInitialization();
-        sdkInstance.showImageAdFullScreen(placementId, callback);
+        sdkInstance.showImageAd(placementId, callback);
     }
 
     /**
-     * Show image ad in windowed mode
+     * Show video ad - display mode determined by response position
+     *
      * @param placementId Ad placement ID
-     * @param callback Callback for ad events
+     * @param callback    Callback for ad events
      */
-    public static void showImageAdWindowed(String placementId, AdCallback callback) {
+    public static void showVideoAd(String placementId, AdCallback callback) {
         checkInitialization();
-        sdkInstance.showImageAdWindowed(placementId, callback);
+        sdkInstance.showVideoAd(placementId, callback);
     }
 
     /**
-     * Show video ad in full screen mode
-     * @param placementId Ad placement ID
-     * @param callback Callback for ad events
-     */
-    public static void showVideoAdFullScreen(String placementId, AdCallback callback) {
-        checkInitialization();
-        sdkInstance.showVideoAdFullScreen(placementId, callback);
-    }
-
-    /**
-     * Show video ad in windowed mode
-     * @param placementId Ad placement ID
-     * @param callback Callback for ad events
-     */
-    public static void showVideoAdWindowed(String placementId, AdCallback callback) {
-        checkInitialization();
-        sdkInstance.showVideoAdWindowed(placementId, callback);
-    }
-
-    /**
-     * Show skippable video ad in full screen mode
-     * @param placementId Ad placement ID
+     * Show skippable video ad - display mode determined by response position
+     *
+     * @param placementId       Ad placement ID
      * @param installButtonText Custom text for install button
-     * @param callback Callback for ad events
+     * @param callback          Callback for ad events
      */
-    public static void showSkippableVideoAdFullScreen(String placementId, String installButtonText, AdCallback callback) {
+    public static void showSkippableVideoAd(String placementId, String installButtonText, AdCallback callback) {
         checkInitialization();
-        sdkInstance.showSkippableVideoAdFullScreen(placementId, installButtonText, callback);
+        sdkInstance.showSkippableVideoAd(placementId, installButtonText, callback);
     }
 
     /**
-     * Show skippable video ad in windowed mode
+     * Show native ad - display mode determined by response position
+     *
      * @param placementId Ad placement ID
-     * @param installButtonText Custom text for install button
-     * @param callback Callback for ad events
+     * @param callback    Callback for ad events
      */
-    public static void showSkippableVideoAdWindowed(String placementId, String installButtonText, AdCallback callback) {
+    public static void showNativeAd(String placementId, AdCallback callback) {
         checkInitialization();
-        sdkInstance.showSkippableVideoAdWindowed(placementId, installButtonText, callback);
-    }
-
-    /**
-     * Show native ad in full screen mode
-     * @param placementId Ad placement ID
-     * @param callback Callback for ad events
-     */
-    public static void showNativeAdFullScreen(String placementId, AdCallback callback) {
-        checkInitialization();
-        sdkInstance.showNativeAdFullScreen(placementId, callback);
-    }
-
-    /**
-     * Show native ad in windowed mode
-     * @param placementId Ad placement ID
-     * @param callback Callback for ad events
-     */
-    public static void showNativeAdWindowed(String placementId, AdCallback callback) {
-        checkInitialization();
-        sdkInstance.showNativeAdWindowed(placementId, callback);
+        sdkInstance.showNativeAd(placementId, callback);
     }
 
     /**
      * Get image ad view for integration into layouts (no dialog)
+     *
      * @param placementId Ad placement ID
-     * @param callback Callback for ad events
+     * @param callback    Callback for ad events
      * @return View that can be added to any layout
      */
     public static View getImageAdView(String placementId, AdCallback callback) {
@@ -140,8 +106,9 @@ public class BidscubeSDK {
 
     /**
      * Get video ad view for integration into layouts (no dialog)
+     *
      * @param placementId Ad placement ID
-     * @param callback Callback for ad events
+     * @param callback    Callback for ad events
      * @return View that can be added to any layout
      */
     public static View getVideoAdView(String placementId, AdCallback callback) {
@@ -151,8 +118,9 @@ public class BidscubeSDK {
 
     /**
      * Get native ad view for integration into layouts (no dialog)
+     *
      * @param placementId Ad placement ID
-     * @param callback Callback for ad events
+     * @param callback    Callback for ad events
      * @return View that can be added to any layout
      */
     public static View getNativeAdView(String placementId, AdCallback callback) {
@@ -162,7 +130,9 @@ public class BidscubeSDK {
 
     /**
      * Set ad position for windowed ads
-     * @param position Ad position (ABOVE_THE_FOLD, BELOW_THE_FOLD, HEADER, FOOTER, SIDEBAR, UNKNOWN)
+     *
+     * @param position Ad position (ABOVE_THE_FOLD, BELOW_THE_FOLD, HEADER, FOOTER,
+     *                 SIDEBAR, UNKNOWN)
      */
     public static void setAdPosition(AdPosition position) {
         checkInitialization();
@@ -171,6 +141,7 @@ public class BidscubeSDK {
 
     /**
      * Get current ad position (manual override)
+     *
      * @return Current ad position
      */
     public static AdPosition getCurrentAdPosition() {
@@ -180,6 +151,7 @@ public class BidscubeSDK {
 
     /**
      * Get effective ad position (response position takes precedence)
+     *
      * @return Effective ad position
      */
     public static AdPosition getEffectiveAdPosition() {
@@ -189,6 +161,7 @@ public class BidscubeSDK {
 
     /**
      * Get response ad position
+     *
      * @return Response ad position
      */
     public static AdPosition getResponseAdPosition() {
@@ -208,16 +181,17 @@ public class BidscubeSDK {
 
     /**
      * Check if SDK is initialized
+     *
      * @return true if SDK is initialized, false otherwise
      */
     public static boolean isInitialized() {
         return sdkInstance != null && sdkInstance.isInitialized();
     }
 
-
     /**
      * Request consent information update
      * This should be called before showing ads to ensure compliance
+     *
      * @param callback Callback for consent information update events
      */
     public static void requestConsentInfoUpdate(ConsentCallback callback) {
@@ -228,6 +202,7 @@ public class BidscubeSDK {
     /**
      * Show consent form to user
      * This should be called when consent is required
+     *
      * @param callback Callback for consent form events
      */
     public static void showConsentForm(ConsentCallback callback) {
@@ -237,6 +212,7 @@ public class BidscubeSDK {
 
     /**
      * Check if consent is required for the current user
+     *
      * @return true if consent is required, false otherwise
      */
     public static boolean isConsentRequired() {
@@ -246,6 +222,7 @@ public class BidscubeSDK {
 
     /**
      * Check if user has given consent for ads
+     *
      * @return true if user has consented to ads, false otherwise
      */
     public static boolean hasAdsConsent() {
@@ -255,6 +232,7 @@ public class BidscubeSDK {
 
     /**
      * Check if user has given consent for analytics
+     *
      * @return true if user has consented to analytics, false otherwise
      */
     public static boolean hasAnalyticsConsent() {
@@ -264,6 +242,7 @@ public class BidscubeSDK {
 
     /**
      * Get current consent status summary
+     *
      * @return String representation of current consent status
      */
     public static String getConsentStatusSummary() {
@@ -281,6 +260,7 @@ public class BidscubeSDK {
 
     /**
      * Enable debug mode for consent testing
+     *
      * @param deviceId Device ID for debug mode
      */
     public static void enableConsentDebugMode(String deviceId) {

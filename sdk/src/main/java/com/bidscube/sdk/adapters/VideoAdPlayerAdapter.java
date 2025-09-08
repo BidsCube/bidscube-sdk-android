@@ -5,6 +5,7 @@ import android.media.MediaPlayer;
 import android.net.Uri;
 import android.util.Log;
 import android.widget.VideoView;
+import com.bidscube.sdk.utils.SDKLogger;
 
 import androidx.annotation.NonNull;
 
@@ -23,11 +24,11 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
     private static final String LOGTAG = "VideoAdPlayerAdapter";
     private static final long POLLING_TIME_MS = 250;
     private static final long INITIAL_DELAY_MS = 250;
-    
+
     private final VideoView videoPlayer;
     private final AudioManager audioManager;
     private final List<VideoAdPlayerCallback> videoAdPlayerCallbacks = new ArrayList<>();
-    
+
     private Timer timer;
     private int adDuration;
     private int savedAdPosition;
@@ -47,12 +48,12 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
 
     private void setupVideoPlayerListeners() {
         if (videoPlayer == null) {
-            Log.e(LOGTAG, "VideoPlayer is null, cannot set up listeners");
+            SDKLogger.e(LOGTAG, "VideoPlayer is null, cannot set up listeners");
             return;
         }
 
         videoPlayer.setOnCompletionListener(mediaPlayer -> {
-            Log.d(LOGTAG, "Video completed");
+            SDKLogger.d(LOGTAG, "Video completed");
             isAdPlaying = false;
             isAdPaused = false;
             savedAdPosition = 0;
@@ -60,7 +61,7 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
         });
 
         videoPlayer.setOnErrorListener((mediaPlayer, errorType, extra) -> {
-            Log.e(LOGTAG, "Video error: " + errorType + ", extra: " + extra);
+            SDKLogger.e(LOGTAG, "Video error: " + errorType + ", extra: " + extra);
             isAdPlaying = false;
             isAdPaused = false;
             notifyImaSdkAboutAdError(errorType);
@@ -68,7 +69,7 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
         });
 
         videoPlayer.setOnPreparedListener(mediaPlayer -> {
-            Log.d(LOGTAG, "Video prepared successfully");
+            SDKLogger.d(LOGTAG, "Video prepared successfully");
             isAdLoaded = true;
             adDuration = mediaPlayer.getDuration();
             if (savedAdPosition > 0) {
@@ -81,31 +82,31 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
     public void addCallback(@NonNull VideoAdPlayerCallback videoAdPlayerCallback) {
         if (videoAdPlayerCallback != null && !videoAdPlayerCallbacks.contains(videoAdPlayerCallback)) {
             videoAdPlayerCallbacks.add(videoAdPlayerCallback);
-            Log.d(LOGTAG, "Callback added, total callbacks: " + videoAdPlayerCallbacks.size());
+            SDKLogger.d(LOGTAG, "Callback added, total callbacks: " + videoAdPlayerCallbacks.size());
         }
     }
 
     @Override
     public void loadAd(@NonNull AdMediaInfo adMediaInfo, @NonNull AdPodInfo adPodInfo) {
-        Log.i(LOGTAG, "Loading ad: " + adMediaInfo.getUrl());
-        
+        SDKLogger.i(LOGTAG, "Loading ad: " + adMediaInfo.getUrl());
+
         if (adMediaInfo == null) {
-            Log.e(LOGTAG, "AdMediaInfo is null");
+            SDKLogger.e(LOGTAG, "AdMediaInfo is null");
             return;
         }
-        
+
         loadedAdMediaInfo = adMediaInfo;
         isAdLoaded = false;
         isAdPlaying = false;
         isAdPaused = false;
-        
-        Log.d(LOGTAG, "Ad loaded successfully");
+
+        SDKLogger.d(LOGTAG, "Ad loaded successfully");
     }
 
     @Override
     public void pauseAd(@NonNull AdMediaInfo adMediaInfo) {
-        Log.i(LOGTAG, "Pausing ad");
-        
+        SDKLogger.i(LOGTAG, "Pausing ad");
+
         if (videoPlayer != null && isAdPlaying) {
             try {
                 savedAdPosition = videoPlayer.getCurrentPosition();
@@ -113,37 +114,38 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
                 isAdPlaying = false;
                 isAdPaused = true;
                 stopAdTracking();
-                Log.d(LOGTAG, "Ad paused at position: " + savedAdPosition);
+                SDKLogger.d(LOGTAG, "Ad paused at position: " + savedAdPosition);
             } catch (Exception e) {
-                Log.e(LOGTAG, "Error pausing ad: " + e.getMessage(), e);
+                SDKLogger.e(LOGTAG, "Error pausing ad: " + e.getMessage(), e);
             }
         } else {
-            Log.w(LOGTAG, "Cannot pause ad: videoPlayer=" + (videoPlayer != null) + ", isAdPlaying=" + isAdPlaying);
+            SDKLogger.w(LOGTAG,
+                    "Cannot pause ad: videoPlayer=" + (videoPlayer != null) + ", isAdPlaying=" + isAdPlaying);
         }
     }
 
     @Override
     public void playAd(AdMediaInfo adMediaInfo) {
-        Log.i(LOGTAG, "Playing ad");
+        SDKLogger.i(LOGTAG, "Playing ad");
 
         if (videoPlayer == null) {
-            Log.e(LOGTAG, "VideoPlayer is null, cannot play ad");
+            SDKLogger.e(LOGTAG, "VideoPlayer is null, cannot play ad");
             notifyImaSdkAboutAdError(MediaPlayer.MEDIA_ERROR_UNSUPPORTED);
             return;
         }
 
         if (adMediaInfo == null) {
-            Log.e(LOGTAG, "AdMediaInfo is null, cannot play ad");
+            SDKLogger.e(LOGTAG, "AdMediaInfo is null, cannot play ad");
             notifyImaSdkAboutAdError(MediaPlayer.MEDIA_ERROR_UNSUPPORTED);
             return;
         }
 
         try {
             String videoUrl = adMediaInfo.getUrl();
-            Log.d(LOGTAG, "Loading video from URL: " + videoUrl);
+            SDKLogger.d(LOGTAG, "Loading video from URL: " + videoUrl);
 
             if (videoUrl == null || videoUrl.trim().isEmpty()) {
-                Log.e(LOGTAG, "Video URL is null or empty");
+                SDKLogger.e(LOGTAG, "Video URL is null or empty");
                 notifyImaSdkAboutAdError(MediaPlayer.MEDIA_ERROR_UNSUPPORTED);
                 return;
             }
@@ -160,13 +162,13 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
             }
 
             videoPlayer.setOnPreparedListener(mediaPlayer -> {
-                Log.d(LOGTAG, "Video prepared successfully");
+                SDKLogger.d(LOGTAG, "Video prepared successfully");
                 isAdLoaded = true;
                 adDuration = mediaPlayer.getDuration();
-                
+
                 if (savedAdPosition > 0) {
                     mediaPlayer.seekTo(savedAdPosition);
-                    Log.d(LOGTAG, "Seeking to saved position: " + savedAdPosition);
+                    SDKLogger.d(LOGTAG, "Seeking to saved position: " + savedAdPosition);
                 }
 
                 try {
@@ -174,15 +176,15 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
                     isAdPlaying = true;
                     isAdPaused = false;
                     startAdTracking();
-                    Log.d(LOGTAG, "Ad started playing successfully");
+                    SDKLogger.d(LOGTAG, "Ad started playing successfully");
                 } catch (Exception e) {
-                    Log.e(LOGTAG, "Error starting video playback: " + e.getMessage(), e);
+                    SDKLogger.e(LOGTAG, "Error starting video playback: " + e.getMessage(), e);
                     notifyImaSdkAboutAdError(MediaPlayer.MEDIA_ERROR_UNSUPPORTED);
                 }
             });
 
             videoPlayer.setOnErrorListener((mediaPlayer, errorType, extra) -> {
-                Log.e(LOGTAG, "Video error: " + errorType + ", extra: " + extra);
+                SDKLogger.e(LOGTAG, "Video error: " + errorType + ", extra: " + extra);
                 isAdPlaying = false;
                 isAdPaused = false;
                 isAdLoaded = false;
@@ -191,7 +193,7 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
             });
 
             videoPlayer.setOnCompletionListener(mediaPlayer -> {
-                Log.d(LOGTAG, "Video completed");
+                SDKLogger.d(LOGTAG, "Video completed");
                 isAdPlaying = false;
                 isAdPaused = false;
                 isAdLoaded = false;
@@ -201,7 +203,7 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
             });
 
         } catch (Exception e) {
-            Log.e(LOGTAG, "Error setting video source: " + e.getMessage(), e);
+            SDKLogger.e(LOGTAG, "Error setting video source: " + e.getMessage(), e);
             isAdPlaying = false;
             isAdPaused = false;
             isAdLoaded = false;
@@ -214,9 +216,9 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
         try {
 
             isReleased = true;
-            
+
             stopAdTracking();
-            
+
             if (videoPlayer != null) {
                 videoPlayer.stopPlayback();
             }
@@ -225,10 +227,10 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
             isAdPaused = false;
             isAdLoaded = false;
             savedAdPosition = 0;
-            
-            Log.d(LOGTAG, "VideoAdPlayerAdapter released successfully");
+
+            SDKLogger.d(LOGTAG, "VideoAdPlayerAdapter released successfully");
         } catch (Exception e) {
-            Log.e(LOGTAG, "Error releasing VideoAdPlayerAdapter: " + e.getMessage(), e);
+            SDKLogger.e(LOGTAG, "Error releasing VideoAdPlayerAdapter: " + e.getMessage(), e);
         }
     }
 
@@ -236,14 +238,14 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
     public void removeCallback(VideoAdPlayerCallback videoAdPlayerCallback) {
         if (videoAdPlayerCallback != null) {
             videoAdPlayerCallbacks.remove(videoAdPlayerCallback);
-            Log.d(LOGTAG, "Callback removed, total callbacks: " + videoAdPlayerCallbacks.size());
+            SDKLogger.d(LOGTAG, "Callback removed, total callbacks: " + videoAdPlayerCallbacks.size());
         }
     }
 
     @Override
     public void stopAd(AdMediaInfo adMediaInfo) {
-        Log.i(LOGTAG, "Stopping ad");
-        
+        SDKLogger.i(LOGTAG, "Stopping ad");
+
         if (videoPlayer != null) {
             try {
                 videoPlayer.stopPlayback();
@@ -252,9 +254,9 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
                 isAdLoaded = false;
                 savedAdPosition = 0;
                 stopAdTracking();
-                Log.d(LOGTAG, "Ad stopped successfully");
+                SDKLogger.d(LOGTAG, "Ad stopped successfully");
             } catch (Exception e) {
-                Log.e(LOGTAG, "Error stopping ad: " + e.getMessage(), e);
+                SDKLogger.e(LOGTAG, "Error stopping ad: " + e.getMessage(), e);
             }
         }
     }
@@ -266,11 +268,11 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
     public int getVolume() {
         try {
             if (audioManager != null) {
-                return (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) * 100) 
-                       / audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                return (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) * 100)
+                        / audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
             }
         } catch (Exception e) {
-            Log.e(LOGTAG, "Error getting volume: " + e.getMessage(), e);
+            SDKLogger.e(LOGTAG, "Error getting volume: " + e.getMessage(), e);
         }
         return 0;
     }
@@ -304,7 +306,7 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
             try {
                 return videoPlayer.getCurrentPosition();
             } catch (Exception e) {
-                Log.e(LOGTAG, "Error getting current position: " + e.getMessage(), e);
+                SDKLogger.e(LOGTAG, "Error getting current position: " + e.getMessage(), e);
             }
         }
         return 0;
@@ -318,11 +320,11 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
     }
 
     private void startAdTracking() {
-        Log.i(LOGTAG, "Starting ad tracking");
+        SDKLogger.i(LOGTAG, "Starting ad tracking");
         if (timer != null) {
             timer.cancel();
         }
-        
+
         timer = new Timer();
         TimerTask updateTimerTask = new TimerTask() {
             @Override
@@ -331,7 +333,7 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
                     VideoProgressUpdate progressUpdate = getAdProgress();
                     notifyImaSdkAboutAdProgress(progressUpdate);
                 } catch (Exception e) {
-                    Log.e(LOGTAG, "Error in ad tracking timer: " + e.getMessage(), e);
+                    SDKLogger.e(LOGTAG, "Error in ad tracking timer: " + e.getMessage(), e);
                 }
             }
         };
@@ -340,33 +342,33 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
 
     private void notifyImaSdkAboutAdEnded() {
         if (isReleased) {
-            Log.d(LOGTAG, "Skipping ad ended callback - adapter is released");
+            SDKLogger.d(LOGTAG, "Skipping ad ended callback - adapter is released");
             return;
         }
-        
-        Log.i(LOGTAG, "Notifying IMA SDK about ad ended");
+
+        SDKLogger.i(LOGTAG, "Notifying IMA SDK about ad ended");
         savedAdPosition = 0;
-        
+
         for (VideoAdPlayer.VideoAdPlayerCallback callback : videoAdPlayerCallbacks) {
             try {
                 callback.onEnded(loadedAdMediaInfo);
             } catch (Exception e) {
-                Log.e(LOGTAG, "Error notifying callback about ad ended: " + e.getMessage(), e);
+                SDKLogger.e(LOGTAG, "Error notifying callback about ad ended: " + e.getMessage(), e);
             }
         }
     }
 
     private void notifyImaSdkAboutAdProgress(VideoProgressUpdate adProgress) {
         if (isReleased) {
-            Log.d(LOGTAG, "Skipping ad progress callback - adapter is released");
+            SDKLogger.d(LOGTAG, "Skipping ad progress callback - adapter is released");
             return;
         }
-        
+
         for (VideoAdPlayer.VideoAdPlayerCallback callback : videoAdPlayerCallbacks) {
             try {
                 callback.onAdProgress(loadedAdMediaInfo, adProgress);
             } catch (Exception e) {
-                Log.e(LOGTAG, "Error notifying callback about ad progress: " + e.getMessage(), e);
+                SDKLogger.e(LOGTAG, "Error notifying callback about ad progress: " + e.getMessage(), e);
             }
         }
     }
@@ -378,38 +380,38 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
      */
     private boolean notifyImaSdkAboutAdError(int errorType) {
         if (isReleased) {
-            Log.d(LOGTAG, "Skipping ad error callback - adapter is released");
+            SDKLogger.d(LOGTAG, "Skipping ad error callback - adapter is released");
             return true;
         }
-        
-        Log.i(LOGTAG, "Notifying IMA SDK about ad error: " + errorType);
+
+        SDKLogger.i(LOGTAG, "Notifying IMA SDK about ad error: " + errorType);
 
         switch (errorType) {
             case MediaPlayer.MEDIA_ERROR_UNSUPPORTED:
-                Log.e(LOGTAG, "MEDIA_ERROR_UNSUPPORTED");
+                SDKLogger.e(LOGTAG, "MEDIA_ERROR_UNSUPPORTED");
                 break;
             case MediaPlayer.MEDIA_ERROR_TIMED_OUT:
-                Log.e(LOGTAG, "MEDIA_ERROR_TIMED_OUT");
+                SDKLogger.e(LOGTAG, "MEDIA_ERROR_TIMED_OUT");
                 break;
             case MediaPlayer.MEDIA_ERROR_SERVER_DIED:
-                Log.e(LOGTAG, "MEDIA_ERROR_SERVER_DIED");
+                SDKLogger.e(LOGTAG, "MEDIA_ERROR_SERVER_DIED");
                 break;
             case MediaPlayer.MEDIA_ERROR_IO:
-                Log.e(LOGTAG, "MEDIA_ERROR_IO");
+                SDKLogger.e(LOGTAG, "MEDIA_ERROR_IO");
                 break;
             case MediaPlayer.MEDIA_ERROR_MALFORMED:
-                Log.e(LOGTAG, "MEDIA_ERROR_MALFORMED");
+                SDKLogger.e(LOGTAG, "MEDIA_ERROR_MALFORMED");
                 break;
             default:
-                Log.e(LOGTAG, "Unknown media error: " + errorType);
+                SDKLogger.e(LOGTAG, "Unknown media error: " + errorType);
                 break;
         }
-        
+
         for (VideoAdPlayer.VideoAdPlayerCallback callback : videoAdPlayerCallbacks) {
             try {
                 callback.onError(loadedAdMediaInfo);
             } catch (Exception e) {
-                Log.e(LOGTAG, "Error notifying callback about ad error: " + e.getMessage(), e);
+                SDKLogger.e(LOGTAG, "Error notifying callback about ad error: " + e.getMessage(), e);
             }
         }
         return true;
@@ -417,24 +419,25 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
 
     public void notifyImaOnContentCompleted() {
         if (isReleased) {
-            Log.d(LOGTAG, "Skipping content completed callback - adapter is released");
+            SDKLogger.d(LOGTAG, "Skipping content completed callback - adapter is released");
             return;
         }
-        
-        Log.i(LOGTAG, "Notifying IMA SDK about content completed");
+
+        SDKLogger.i(LOGTAG, "Notifying IMA SDK about content completed");
         for (VideoAdPlayer.VideoAdPlayerCallback callback : videoAdPlayerCallbacks) {
             try {
                 callback.onContentComplete();
             } catch (Exception e) {
-                Log.e(LOGTAG, "Error notifying callback about content completed: " + e.getMessage(), e);
+                SDKLogger.e(LOGTAG, "Error notifying callback about content completed: " + e.getMessage(), e);
             }
         }
     }
 
     private void stopAdTracking() {
-        Log.i(LOGTAG, "Stopping ad tracking");
+        SDKLogger.i(LOGTAG, "Stopping ad tracking");
         if (timer != null) {
             timer.cancel();
+            timer.purge(); // Remove cancelled tasks from the timer's task queue
             timer = null;
         }
     }
@@ -447,8 +450,21 @@ public class VideoAdPlayerAdapter implements VideoAdPlayer {
                 return new VideoProgressUpdate(adPosition, adDuration);
             }
         } catch (Exception e) {
-            Log.e(LOGTAG, "Error getting ad progress: " + e.getMessage(), e);
+            SDKLogger.e(LOGTAG, "Error getting ad progress: " + e.getMessage(), e);
         }
         return new VideoProgressUpdate(0, adDuration);
+    }
+
+    /**
+     * Finalizer to ensure timer is properly disposed of
+     * This is a safety measure in case normal cleanup methods aren't called
+     */
+    @Override
+    protected void finalize() throws Throwable {
+        try {
+            stopAdTracking();
+        } finally {
+            super.finalize();
+        }
     }
 }

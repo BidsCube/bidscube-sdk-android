@@ -14,10 +14,13 @@ import com.google.android.ump.FormError;
 import com.google.android.ump.UserMessagingPlatform;
 
 import java.util.concurrent.atomic.AtomicBoolean;
+import com.bidscube.sdk.utils.SDKLogger;
 
 /**
- * Manages user consent for GDPR and CCPA compliance using Google's User Messaging Platform (UMP)
- * This class handles consent collection, storage, and retrieval for privacy compliance
+ * Manages user consent for GDPR and CCPA compliance using Google's User
+ * Messaging Platform (UMP)
+ * This class handles consent collection, storage, and retrieval for privacy
+ * compliance
  */
 public class ConsentManager {
 
@@ -68,7 +71,6 @@ public class ConsentManager {
      */
     public boolean isCcpaApplicable() {
 
-
         String language = context.getResources().getConfiguration().locale.getCountry();
         return "US".equals(language) || "CA".equals(language);
     }
@@ -83,10 +85,9 @@ public class ConsentManager {
 
         String androidId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
 
-
         ConsentDebugSettings debugSettings = new ConsentDebugSettings.Builder(context)
                 .setDebugGeography(ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_EEA)
-                .addTestDeviceHashedId(androidId)//"1234567890ABCDEF1234567890ABCDEF")
+                .addTestDeviceHashedId(androidId)
                 .build();
 
         ConsentRequestParameters params = new ConsentRequestParameters.Builder()
@@ -94,19 +95,18 @@ public class ConsentManager {
                 .setConsentDebugSettings(debugSettings)
                 .build();
 
-        Log.d(TAG, "Hash id " + androidId);
+        SDKLogger.d(TAG, "Hash id " + androidId);
         consentInformation.requestConsentInfoUpdate(
                 activity,
                 params,
                 () -> {
-                    Log.d(TAG, "Consent info updated successfully");
+                    SDKLogger.d(TAG, "Consent info updated successfully");
                     isConsentFormAvailable.set(consentInformation.isConsentFormAvailable());
                     callback.onConsentInfoUpdated();
                 },
                 requestConsentError -> {
-                    Log.e(TAG, "Failed to update consent info: " + requestConsentError.getMessage());
-                }
-        );
+                    SDKLogger.e(TAG, "Failed to update consent info: " + requestConsentError.getMessage());
+                });
     }
 
     /**
@@ -117,7 +117,7 @@ public class ConsentManager {
      */
     public void loadAndShowConsentForm(Activity activity, ConsentFormCallback callback) {
         if (!isConsentFormAvailable.get()) {
-            Log.w(TAG, "Consent form not available");
+            SDKLogger.w(TAG, "Consent form not available");
             callback.onConsentFormError(new FormError(1, "Consent form not available"));
             return;
         }
@@ -128,10 +128,9 @@ public class ConsentManager {
                     this.consentForm = consentForm;
                 },
                 loadError -> {
-                    Log.e(TAG, "Failed to load consent form: " + loadError.getMessage());
+                    SDKLogger.e(TAG, "Failed to load consent form: " + loadError.getMessage());
                     callback.onConsentFormError(new FormError(1, "Failed to load consent form"));
-                }
-        );
+                });
     }
 
     /**
@@ -186,7 +185,63 @@ public class ConsentManager {
         consentInformation.reset();
         sharedPreferences.edit().clear().apply();
         isConsentFormAvailable.set(false);
-        Log.d(TAG, "Consent information reset");
+        SDKLogger.d(TAG, "Consent information reset");
+    }
+
+    /**
+     * Set mock consent data for testing purposes
+     * This is useful for testing Polish region scenarios
+     */
+    public void setMockConsentData(boolean gdprApplies, String gdprConsent, String additionalConsent, String gppString,
+            String usPrivacy) {
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+
+        if (gdprApplies) {
+            editor.putInt(PREF_IABTCF_GDPRAPPLIES, 1);
+        } else {
+            editor.putInt(PREF_IABTCF_GDPRAPPLIES, 0);
+        }
+
+        if (gdprConsent != null && !gdprConsent.isEmpty()) {
+            editor.putString(PREF_IABTCF_TCSTRING, gdprConsent);
+        }
+
+        if (additionalConsent != null && !additionalConsent.isEmpty()) {
+            editor.putString(PREF_IABTCF_ADDTLCONSENT, additionalConsent);
+        }
+
+        if (gppString != null && !gppString.isEmpty()) {
+            editor.putString(PREF_IABGPP_HDR_GPPSTRING, gppString);
+        }
+
+        if (usPrivacy != null && !usPrivacy.isEmpty()) {
+            editor.putString(PREF_US_PRIVACY_STRING, usPrivacy);
+        }
+
+        editor.apply();
+        SDKLogger.d(TAG, "Mock consent data set for testing");
+    }
+
+    /**
+     * Set Polish region test consent data
+     */
+    public void setPolishTestConsentData(String testCase) {
+        switch (testCase) {
+            case "no_consent":
+                setMockConsentData(true, "", "", "", "");
+                break;
+            case "full_consent":
+                setMockConsentData(true, "CP1XxR7P1XxR7ABABBENBwCgAAAAAAAAAAYgAAAAAAAA", "", "", "");
+                break;
+            case "partial_consent":
+                setMockConsentData(true, "CP1XxR7P1XxR7ABABBENBwCgAAAAAAAAAAYgAAAAAAAA", "", "", "");
+                break;
+            case "consent_withdrawn":
+                setMockConsentData(true, "", "", "", "");
+                break;
+            default:
+                SDKLogger.w(TAG, "Unknown test case: " + testCase);
+        }
     }
 
     /**
@@ -204,7 +259,7 @@ public class ConsentManager {
         editor.putString(PREF_US_PRIVACY_STRING, getUsPrivacyString());
 
         editor.apply();
-        Log.d(TAG, "Consent data stored in SharedPreferences");
+        SDKLogger.d(TAG, "Consent data stored in SharedPreferences");
     }
 
     /**
@@ -238,4 +293,3 @@ public class ConsentManager {
         return summary.toString();
     }
 }
-

@@ -3,6 +3,7 @@ package com.bidscube.sdk.utils;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
+import org.xml.sax.InputSource;
 
 import javax.xml.parsers.*;
 
@@ -256,4 +257,26 @@ public class VastParser {
         
         System.out.println("=== End Analysis ===");
     }
+
+    public static String getCompanionImageUrl(String vastXml) {
+        try {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder builder = factory.newDocumentBuilder();
+            InputSource is = new InputSource(new StringReader(vastXml));
+            Document doc = builder.parse(is);
+
+            NodeList companionList = doc.getElementsByTagName("Companion");
+            if (companionList != null && companionList.getLength() > 0) {
+                Element companion = (Element) companionList.item(0);
+                NodeList staticResources = companion.getElementsByTagName("StaticResource");
+                if (staticResources != null && staticResources.getLength() > 0) {
+                    return staticResources.item(0).getTextContent().trim();
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
 }

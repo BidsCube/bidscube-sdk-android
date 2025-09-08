@@ -20,6 +20,12 @@ public class SDKConfig {
     private final int defaultAdTimeout;
     private final String defaultAdPosition;
 
+    // Consent parameters
+    private final Integer gdpr;
+    private final String gdprConsent;
+    private final String usPrivacy;
+    private final Boolean coppa;
+
     private SDKConfig(Builder builder) {
         this.appId = builder.appId;
         this.appName = builder.appName;
@@ -30,6 +36,10 @@ public class SDKConfig {
         this.enableDebugMode = builder.enableDebugMode;
         this.defaultAdTimeout = builder.defaultAdTimeout;
         this.defaultAdPosition = builder.defaultAdPosition;
+        this.gdpr = builder.gdpr;
+        this.gdprConsent = builder.gdprConsent;
+        this.usPrivacy = builder.usPrivacy;
+        this.coppa = builder.coppa;
     }
 
     public String getAppId() {
@@ -68,6 +78,29 @@ public class SDKConfig {
         return defaultAdPosition;
     }
 
+    public Integer getGdpr() {
+        return gdpr;
+    }
+
+    public String getGdprConsent() {
+        return gdprConsent;
+    }
+
+    public String getUsPrivacy() {
+        return usPrivacy;
+    }
+
+    public Boolean getCoppa() {
+        return coppa;
+    }
+
+    /**
+     * Get the SDK version from environment variable or default to 1.0.1
+     */
+    private static String getSDKVersion() {
+        return System.getenv().getOrDefault("BidscubeVersion", "1.0.1");
+    }
+
     /**
      * Builder class for SDKConfig with automatic app detection
      */
@@ -81,6 +114,12 @@ public class SDKConfig {
         private boolean enableDebugMode = false;
         private int defaultAdTimeout = 15000;
         private String defaultAdPosition = "UNKNOWN";
+
+        // Consent parameters (null means use ConsentManager defaults)
+        private Integer gdpr = null;
+        private String gdprConsent = null;
+        private String usPrivacy = null;
+        private Boolean coppa = null;
 
         /**
          * Create a new Builder with automatic app detection
@@ -103,19 +142,21 @@ public class SDKConfig {
 
                 this.appName = pm.getApplicationLabel(pm.getApplicationInfo(context.getPackageName(), 0)).toString();
 
-                this.appVersion = packageInfo.versionName != null ? packageInfo.versionName : String.valueOf(packageInfo.versionCode);
+                this.appVersion = packageInfo.versionName != null ? packageInfo.versionName
+                        : String.valueOf(packageInfo.versionCode);
 
                 this.language = context.getResources().getConfiguration().getLocales().get(0).getLanguage();
 
-                this.userAgent = "BidscubeSDK/" + this.appVersion + " (Android " + Build.VERSION.RELEASE + "; " + Build.MODEL + ")";
+                this.userAgent = "BidscubeSDK/" + getSDKVersion() + " (Android " + Build.VERSION.RELEASE + "; "
+                        + Build.MODEL + ")";
 
             } catch (Exception e) {
 
                 this.appId = "unknown_app";
                 this.appName = "Unknown App";
-                this.appVersion = "1.0.0";
+                this.appVersion = getSDKVersion();
                 this.language = "en";
-                this.userAgent = "BidscubeSDK/1.0.0 (Android)";
+                this.userAgent = "BidscubeSDK/" + getSDKVersion() + " (Android)";
             }
         }
 
@@ -192,6 +233,38 @@ public class SDKConfig {
         }
 
         /**
+         * Set GDPR applies value (0 = no, 1 = yes, null = use ConsentManager)
+         */
+        public Builder gdpr(Integer gdpr) {
+            this.gdpr = gdpr;
+            return this;
+        }
+
+        /**
+         * Set GDPR consent string (null = use ConsentManager)
+         */
+        public Builder gdprConsent(String gdprConsent) {
+            this.gdprConsent = gdprConsent;
+            return this;
+        }
+
+        /**
+         * Set US Privacy string (null = use ConsentManager)
+         */
+        public Builder usPrivacy(String usPrivacy) {
+            this.usPrivacy = usPrivacy;
+            return this;
+        }
+
+        /**
+         * Set COPPA compliance (null = use ConsentManager)
+         */
+        public Builder coppa(Boolean coppa) {
+            this.coppa = coppa;
+            return this;
+        }
+
+        /**
          * Build the SDKConfig
          */
         public SDKConfig build() {
@@ -199,4 +272,3 @@ public class SDKConfig {
         }
     }
 }
-

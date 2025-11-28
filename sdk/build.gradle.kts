@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.bundling.Jar
+
 plugins {
     id("com.android.library")
     kotlin("android")
@@ -7,7 +9,7 @@ plugins {
 
 android {
     namespace = "com.bidscube.sdk"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 24
@@ -23,6 +25,7 @@ android {
             )
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -38,23 +41,35 @@ android {
 }
 
 dependencies {
+    val media3Version = "1.4.1"
+
+    implementation("androidx.media3:media3-common:$media3Version")
+    implementation("androidx.media3:media3-ui:$media3Version")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
     compileOnly("com.android.tools:desugar_jdk_libs:2.0.4")
-    implementation(libs.ump)
-    implementation(libs.play.services.ads.identifier)
-    implementation(libs.interactivemedia)
-    implementation(libs.androidx.media3.ui)
-    implementation(libs.androidx.cardview)
-    implementation(libs.material)
+    implementation("com.google.android.ump:user-messaging-platform:2.2.0")
+    implementation("com.google.android.gms:play-services-ads-identifier:18.0.1")
+    implementation("com.google.ads.interactivemedia.v3:interactivemedia:3.33.0")
+    implementation("androidx.cardview:cardview:1.0.0")
+    implementation("com.google.android.material:material:1.12.0")
+}
+
+val sourcesJar by tasks.registering(Jar::class) {
+    archiveClassifier.set("sources")
+    from(android.sourceSets["main"].java.srcDirs)
+}
+
+val javadocJar by tasks.registering(Jar::class) {
+    archiveClassifier.set("javadoc")
 }
 
 afterEvaluate {
     publishing {
         publications {
-            register<MavenPublication>("release") {
+            create<MavenPublication>("release") {
                 groupId = "com.bidscube"
                 artifactId = "bidscube-sdk"
-                version = System.getenv("BidscubeVersion") ?: "1.0.1"
+                version = System.getenv("BidscubeVersion") ?: "1.1.0"
 
                 from(components["release"])
 
@@ -82,12 +97,10 @@ afterEvaluate {
 
                     scm {
                         connection.set("scm:git:git://github.com/BidsCube/bidscube-sdk.git")
-                        developerConnection.set("scm:git:ssh://github.com:BidsCube/bidscube-sdk.git")
+                        developerConnection.set("scm:git:ssh://github.com/BidsCube/bidscube-sdk.git")
                         url.set("https://github.com/BidsCube/bidscube-sdk")
                     }
                 }
-
-
             }
         }
 
@@ -102,11 +115,19 @@ afterEvaluate {
             }
         }
     }
+}
+signing {
+    useGpgCmd()
+}
 
-    signing {
-        sign(publishing.publications["release"])
-        setRequired {
-            gradle.taskGraph.hasTask("publish") && !gradle.taskGraph.hasTask("publishToMavenLocal")
+
+afterEvaluate {
+    val releasePub = publishing.publications.findByName("release")
+    if (releasePub != null) {
+        signing.sign(releasePub)
+    } else {
+        publishing.publications.withType(MavenPublication::class.java).forEach {
+            signing.sign(it)
         }
     }
 }

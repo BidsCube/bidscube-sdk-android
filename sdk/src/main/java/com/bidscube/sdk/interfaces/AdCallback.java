@@ -1,5 +1,7 @@
 package com.bidscube.sdk.interfaces;
 
+import com.bidscube.sdk.models.AdRenderContext;
+
 /**
  * Callback interface for ad events
  * Implement this interface to handle ad loading, display, and user interaction events
@@ -43,6 +45,16 @@ public interface AdCallback {
      * @param errorMessage Human-readable error message
      */
     void onAdFailed(String placementId, int errorCode, String errorMessage);
+    
+    /**
+     * Called after an ad response is received but before the SDK renders it.
+     * Return {@code true} to indicate that you have handled rendering yourself;
+     * the SDK will skip its default UI in that case.
+     *
+     * @param context Metadata describing the response (placement, ADM, position, type)
+     * @return {@code true} if the host app handled rendering, otherwise {@code false}
+     */
+    default boolean onAdRenderOverride(AdRenderContext context) { return false; }
     
     /**
      * Called when video ad starts playing

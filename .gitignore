@@ -25,3 +25,6 @@ replay_pid*
 pom.xml
 settings.xml
 gradle.properties
+
+gradlew
+gradlew.bat

@@ -186,6 +186,23 @@ BidscubeSDK.requestConsentInfoUpdate(new ConsentCallback() {
 });
 ```
 
+## Override SDK rendering
+
+`AdCallback` exposes `onAdRenderOverride` which receives the ADM payload, resolved ad position, and the SDK render type. Return `true` to prevent the SDK from showing its default dialogs/views and handle rendering yourself:
+
+```kotlin
+val callback = object : AdCallback {
+    override fun onAdRenderOverride(context: AdRenderContext): Boolean {
+        if (context.renderType == AdRenderType.NATIVE) {
+            renderMyNativeCard(context.adm, context.position)
+            return true
+        }
+        return false
+    }
+}
+```
+
+
 ### Check Consent Status
 
 ```java

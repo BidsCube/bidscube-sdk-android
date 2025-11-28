@@ -127,12 +127,6 @@ public class SDKTestActivity extends Activity {
         buttonContainer.addView(videoAdButton);
 
 
-        Button skippableVideoAdButton = new Button(this);
-        skippableVideoAdButton.setText("Skippable Video Ads");
-        skippableVideoAdButton.setOnClickListener(v -> showAd(AdType.Type.SKIP_VIDEO));
-        buttonContainer.addView(skippableVideoAdButton);
-
-
         Button nativeAdButton = new Button(this);
         nativeAdButton.setText("Native Ads");
         nativeAdButton.setOnClickListener(v -> showAd(AdType.Type.NATIVE));

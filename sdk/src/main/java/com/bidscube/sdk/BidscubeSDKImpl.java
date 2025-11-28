@@ -89,7 +89,7 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             ImageAdType imageAdType = new ImageAdType(placementId);
             String url = imageAdType.buildRequestUrl(deviceInfo).toString();
 
-            adDisplayManager.showImageAdWithResponsePosition(url);
+            adDisplayManager.showImageAdWithResponsePosition(placementId, url, callback);
 
             if (callback != null) {
                 callback.onAdLoaded(placementId);
@@ -114,7 +114,7 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             VideoAdType videoAdType = new VideoAdType(placementId);
             String url = videoAdType.buildRequestUrl(deviceInfo).toString();
 
-            adDisplayManager.showVideoAdWithResponsePosition(url);
+            adDisplayManager.showVideoAdWithResponsePosition(placementId, url, callback);
 
             if (callback != null) {
                 callback.onAdLoaded(placementId);
@@ -177,9 +177,9 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             boolean shouldShowFullScreen = shouldShowFullScreen(effectivePosition);
 
             if (shouldShowFullScreen) {
-                adDisplayManager.showAdNativeFullScreenFromUrl(url);
+                adDisplayManager.showAdNativeFullScreenFromUrl(placementId, url, callback);
             } else {
-                adDisplayManager.showAdNativeWindowedFromUrl(url);
+                adDisplayManager.showAdNativeWindowedFromUrl(placementId, url, callback);
             }
 
             if (callback != null) {
@@ -227,7 +227,7 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             ImageAdType imageAdType = new ImageAdType(placementId);
             String url = imageAdType.buildRequestUrl(deviceInfo).toString();
 
-            View adView = adDisplayManager.getImageAdView(url, callback);
+            View adView = adDisplayManager.getImageAdView(placementId, url, callback);
 
             if (callback != null) {
                 callback.onAdLoaded(placementId);
@@ -255,7 +255,7 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             VideoAdType videoAdType = new VideoAdType(placementId);
             String url = videoAdType.buildRequestUrl(deviceInfo).toString();
 
-            View adView = adDisplayManager.getVideoAdView(url, callback);
+            View adView = adDisplayManager.getVideoAdView(placementId, url, callback);
 
             if (callback != null) {
                 callback.onAdLoaded(placementId);
@@ -284,7 +284,7 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             NativeAdType nativeAdType = new NativeAdType(placementId);
             String url = nativeAdType.buildRequestUrl(deviceInfo).toString();
 
-            View adView = adDisplayManager.getNativeAdView(url, callback);
+            View adView = adDisplayManager.getNativeAdView(placementId, url, callback);
 
             if (callback != null) {
                 callback.onAdLoaded(placementId);

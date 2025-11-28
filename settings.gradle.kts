@@ -14,4 +14,3 @@ pluginManagement {
 
 rootProject.name = "bidscube-sdk"
 include(":sdk")
-include(":testApp")

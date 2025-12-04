@@ -10,7 +10,6 @@ public interface AdType {
         IMAGE,
         VIDEO,
         NATIVE,
-        SKIP_VIDEO,
     }
 
     Uri buildRequestUrl(DeviceInfo deviceInfo);

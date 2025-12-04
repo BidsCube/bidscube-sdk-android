@@ -3,7 +3,6 @@ package com.bidscube.sdk.activities;
 import android.app.Activity;
 import android.graphics.Color;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -35,9 +34,9 @@ public class WindowedAdTestActivity extends Activity {
     private View videoAdView;
     private View nativeAdView;
 
-    private static final String IMAGE_AD_PLACEMENT_ID = "19481";
-    private static final String VIDEO_AD_PLACEMENT_ID = "19483";
-    private static final String NATIVE_AD_PLACEMENT_ID = "19487";
+    private static final String IMAGE_AD_PLACEMENT_ID = "20212";
+    private static final String VIDEO_AD_PLACEMENT_ID = "20213";
+    private static final String NATIVE_AD_PLACEMENT_ID = "20214";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

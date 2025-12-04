@@ -50,12 +50,15 @@ public interface AdCallback {
      * Called after an ad response is received but before the SDK renders it.
      * Return {@code true} to indicate that you have handled rendering yourself;
      * the SDK will skip its default UI in that case.
+     * Use this method for all ad types (HTML ADM or parsed native model). For native
+     * ads the parsed model (if available) will be available via
+     * {@link AdRenderContext#getNativeAd()}.
      *
      * @param context Metadata describing the response (placement, ADM, position, type)
      * @return {@code true} if the host app handled rendering, otherwise {@code false}
      */
     default boolean onAdRenderOverride(AdRenderContext context) { return false; }
-    
+
     /**
      * Called when video ad starts playing
      * @param placementId The placement ID of the video ad
@@ -87,4 +90,3 @@ public interface AdCallback {
      */
     default void onInstallButtonClicked(String placementId, String buttonText) {}
 }
-

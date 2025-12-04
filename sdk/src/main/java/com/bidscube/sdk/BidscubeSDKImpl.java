@@ -3,7 +3,6 @@ package com.bidscube.sdk;
 
 import android.app.Activity;
 import android.content.Context;
-import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
 
@@ -131,7 +130,7 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
     }
 
     @Override
-    public void showSkippableVideoAd(String placementId, String installButtonText, AdCallback callback) {
+    public void showSkippableVideoAd(String placementId, AdCallback callback) {
         checkInitialization();
         if (callback != null)
             callback.onAdLoading(placementId);
@@ -142,9 +141,9 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             boolean shouldShowFullScreen = shouldShowFullScreen(effectivePosition);
 
             if (shouldShowFullScreen) {
-                adDisplayManager.showSkippableVideoAdFullScreen(installButtonText);
+                adDisplayManager.showSkippableVideoAdFullScreen(placementId);
             } else {
-                adDisplayManager.showSkippableVideoAdFullScreen(installButtonText);
+                adDisplayManager.showSkippableVideoAdFullScreen(placementId);
                 //adDisplayManager.showSkippableVideoAdWindowed(installButtonText);
             }
 
@@ -356,19 +355,12 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
         if (context instanceof Activity) {
             consentManager.requestConsentInfoUpdate(
                     (Activity) context,
-                    new ConsentManager.ConsentInfoUpdateCallback() {
-                        @Override
-                        public void onConsentInfoUpdated() {
-
-                            deviceInfoProvider.getDeviceInfoWithCurrentConsent(newDeviceInfo -> {
-                                deviceInfo = newDeviceInfo;
-                                if (callback != null) {
-                                    callback.onConsentInfoUpdated();
-                                }
-                            });
+                    () -> deviceInfoProvider.getDeviceInfoWithCurrentConsent(newDeviceInfo -> {
+                        deviceInfo = newDeviceInfo;
+                        if (callback != null) {
+                            callback.onConsentInfoUpdated();
                         }
-
-                    });
+                    }));
         } else {
             SDKLogger.e(TAG, "Context is not an Activity, cannot request consent info update");
             if (callback != null) {

@@ -38,7 +38,7 @@ public interface IBidscubeSDK {
      */
     void showVideoAd(String placementId, AdCallback callback);
 
-    void showSkippableVideoAd(String placementId, String installButtonText, AdCallback callback);
+    void showSkippableVideoAd(String placementId, AdCallback callback);
 
     /**
      * Show native ad - display mode determined by response position

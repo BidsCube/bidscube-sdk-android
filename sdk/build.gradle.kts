@@ -71,11 +71,18 @@ afterEvaluate {
             create<MavenPublication>("release") {
                 groupId = "com.bidscube"
                 artifactId = "bidscube-sdk"
-                version = System.getenv("BidscubeVersion") ?: "1.1.0"
+                version = System.getenv("BidscubeVersion") ?: "1.2.0"
 
-                artifact(layout.buildDirectory.file("outputs/aar/sdk-release.aar")) {
+//                artifact(layout.buildDirectory.file("outputs/aar/sdk-release.aar")) {
+//                    extension = "aar"
+//                }
+
+                artifact("$buildDir/outputs/aar/sdk-release.aar") {
                     extension = "aar"
                 }
+
+                artifact(tasks.named("sourcesJar"))
+                artifact(tasks.named("javadocJar"))
 
                 from(components["release"])
 
@@ -135,5 +142,85 @@ afterEvaluate {
         publishing.publications.withType(MavenPublication::class.java).forEach {
             signing.sign(it)
         }
+    }
+}
+
+// Validation task: ensure the release publication contains expected artifacts before publish
+afterEvaluate {
+    val validateReleasePublication by tasks.registering {
+        dependsOn("assembleRelease")
+        // ensure our source/javadoc jar tasks run
+        dependsOn(tasks.named("sourcesJar"))
+        dependsOn(tasks.named("javadocJar"))
+        doLast {
+            val pub = publishing.publications.findByName("release") as? MavenPublication
+                ?: throw GradleException("No 'release' publication found")
+
+            val missing = mutableListOf<String>()
+
+            // Check presence of an AAR artifact in the publication
+            // Prefer the AAR produced under build/outputs/aar
+            val aarCandidate = file("$buildDir/outputs/aar/sdk-release.aar").takeIf { it.exists() }
+                ?: fileTree("$buildDir/outputs/aar").matching { include("*.aar") }.files.firstOrNull()
+
+            if (aarCandidate == null) {
+                missing += "AAR not found in build/outputs/aar (expected sdk-release.aar or any .aar there)"
+            } else {
+                println("Found AAR to publish: ${aarCandidate.absolutePath}")
+            }
+
+            // Locate jars in build/libs (main jar, sources and javadoc) — this is where Gradle places published jars
+            val libsDir = file("$buildDir/libs")
+            val mainJar = libsDir.listFiles()?.firstOrNull { it.extension == "jar" && !it.name.contains("sources") && !it.name.contains("javadoc") }
+            val sourcesJarFileFromLibs = libsDir.listFiles()?.firstOrNull { it.name.contains("sources") && it.extension == "jar" }
+            val javadocJarFileFromLibs = libsDir.listFiles()?.firstOrNull { it.name.contains("javadoc") && it.extension == "jar" }
+
+            if (sourcesJarFileFromLibs == null) {
+                missing += "sources JAR not found under $buildDir/libs (looked for *sources*.jar)"
+            } else {
+                println("Found sources jar: ${sourcesJarFileFromLibs.absolutePath}")
+            }
+            if (javadocJarFileFromLibs == null) {
+                missing += "javadoc JAR not found under $buildDir/libs (looked for *javadoc*.jar)"
+            } else {
+                println("Found javadoc jar: ${javadocJarFileFromLibs.absolutePath}")
+            }
+
+            // Also accept previously-found AGP outputs (fallback) — we've done earlier fallbacks; if they exist, good.
+
+            // If the publication references artifact files explicitly, warn only if both the publication file is missing and the corresponding built artifact is missing
+            pub.artifacts.forEach { art ->
+                val f = art.file
+                val cls = art.classifier ?: "<no classifier>"
+                val ext = art.extension ?: "<no ext>"
+                if (f != null && f.exists()) {
+                    println("Publication artifact exists: classifier=$cls ext=$ext file=${f.absolutePath}")
+                } else {
+                    // map classifier/ext to expected built output
+                    val expected = when (cls) {
+                        "sources" -> sourcesJarFileFromLibs
+                        "javadoc" -> javadocJarFileFromLibs
+                        else -> aarCandidate ?: mainJar
+                    }
+                    if (expected == null || !expected.exists()) {
+                        val filePath = f?.path ?: "<publication-file-missing>"
+                        missing += "publication artifact missing: classifier=$cls ext=$ext file=$filePath"
+                    } else {
+                        println("Publication artifact ${cls}/${ext} resolved to built output: ${expected.absolutePath}")
+                    }
+                }
+            }
+
+            if (missing.isNotEmpty()) {
+                throw GradleException("Publication validation failed:\n\t" + missing.joinToString("\n\t"))
+            }
+
+            println("Publication 'release' validated: all artifacts present.")
+        }
+    }
+
+    // Make publish tasks depend on validation
+    tasks.matching { it.name.startsWith("publish", ignoreCase = true) }.configureEach {
+        dependsOn(validateReleasePublication)
     }
 }

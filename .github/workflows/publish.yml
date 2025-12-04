@@ -85,12 +85,10 @@ jobs:
           asset_name: sdk-javadoc-${{ github.ref_name }}.jar
           asset_content_type: application/java-archive
 
-      # --- New pre-deploy verification and settings copy steps ---
       - name: Verify built artifacts
         run: |
           set -e
           echo "Verifying built artifacts..."
-          # check for AAR
           if compgen -G "sdk/build/outputs/aar/*.aar" > /dev/null; then
             echo "Found AAR in sdk/build/outputs/aar"
           elif compgen -G "build/outputs/aar/*.aar" > /dev/null; then
@@ -101,7 +99,6 @@ jobs:
             exit 1
           fi
 
-          # check for sources and javadoc JARs
           if [ ! -f "sdk/build/libs/sdk-sources.jar" ] && [ ! -f "build/libs/sdk-sources.jar" ]; then
             echo "Error: sources JAR not found"
             ls -la sdk/build/libs || true
@@ -157,7 +154,6 @@ jobs:
           set -e
           echo "Preparing to deploy..."
 
-          # Prefer credentials from gradle.properties (loaded into step outputs), then fall back to repository secrets
           USER="${{ steps.load_maven_creds.outputs.maven_user }}"
           PASS="${{ steps.load_maven_creds.outputs.maven_pass }}"
 
@@ -168,29 +164,20 @@ jobs:
             PASS="${{ secrets.OSSRH_PASSWORD }}"
           fi
 
-          if [ -z "$USER" ] || [ -z "$PASS" ]; then
-            echo "No Maven credentials found in gradle.properties or repository secrets. Skipping deploy."
-            echo "Set mavenCentralUsername/mavenCentralPassword in gradle.properties, or set OSSRH_USERNAME/OSSRH_PASSWORD secrets."
-            exit 1
-          fi
-
-          echo "Using Maven user: ${USER}"
+          # We will prefer copying a pre-populated settings.xml from the repository. If you keep
+          # credentials in gradle.properties or repository secrets those are available above,
+          # but the deploy step will use the copied settings.xml file.
 
           # If we have credentials, ensure settings.xml contains them — overwrite copied settings only if creds provided
           mkdir -p "$HOME/.m2"
-          cat > "$HOME/.m2/settings.xml" <<SETTINGS
-<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
-          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
-  <servers>
-    <server>
-      <id>central</id>
-      <username>${USER}</username>
-      <password>${PASS}</password>
-    </server>
-  </servers>
-</settings>
-SETTINGS
+          # Prefer copying a pre-populated settings.xml from the repository (safer than embedding credentials)
+          if [ -f "settings.xml" ]; then
+            cp -v settings.xml "$HOME/.m2/settings.xml"
+            echo "Copied repository settings.xml to $HOME/.m2/settings.xml"
+          else
+            echo "Error: settings.xml not found in repository root. Please add settings.xml or set up credentials via repository secrets."
+            exit 1
+          fi
 
           echo "Installed Maven settings with provided credentials"
 

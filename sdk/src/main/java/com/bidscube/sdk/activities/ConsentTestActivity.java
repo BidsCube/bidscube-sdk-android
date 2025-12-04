@@ -48,8 +48,8 @@ public class ConsentTestActivity extends Activity {
 
         addTextView("Placement ID Input:", layout);
         placementIdInput = new EditText(this);
-        placementIdInput.setHint("Enter placement ID (e.g., 19481)");
-        placementIdInput.setText("19481");
+        placementIdInput.setHint("Enter placement ID:");
+        placementIdInput.setText("");
         placementIdInput.setPadding(16, 16, 16, 16);
         layout.addView(placementIdInput);
 
@@ -427,7 +427,7 @@ public class ConsentTestActivity extends Activity {
             }
         };
 
-        BidscubeSDK.showImageAd("19481", callback);
+        BidscubeSDK.showImageAd("20212", callback);
     }
 
     private void showVideoAdIfConsent() {

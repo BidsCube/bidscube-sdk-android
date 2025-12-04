@@ -17,18 +17,17 @@ import android.webkit.WebView;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.VideoView;
 
 import androidx.media3.common.util.UnstableApi;
 
+import com.bidscube.sdk.ads.AdType;
 import com.bidscube.sdk.ads.VideoAdType;
 import com.bidscube.sdk.interfaces.AdCallback;
 import com.bidscube.sdk.models.AdRenderContext;
 import com.bidscube.sdk.models.enums.AdPosition;
-import com.bidscube.sdk.models.enums.AdRenderType;
 import com.bidscube.sdk.httpProvider.HttpProvider;
 
 import com.bidscube.sdk.models.DeviceInfo;
@@ -41,6 +40,7 @@ import com.bidscube.sdk.utils.SDKLogger;
 import com.bidscube.sdk.view.BannerViewFactory;
 import com.bidscube.sdk.view.IMAPlayerHandler;
 import com.bidscube.sdk.view.NativeAdView;
+import com.bidscube.sdk.view.NativeAdBinder;
 import com.bumptech.glide.Glide;
 import com.google.android.material.imageview.ShapeableImageView;
 import com.google.android.material.shape.CornerFamily;
@@ -50,8 +50,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
-
-import android.os.Handler;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Manages the display of different ad types in both full screen and windowed
@@ -89,6 +92,19 @@ public class AdDisplayManager {
     public AdDisplayManager(Context context, DeviceInfo deviceInfo) {
         this.context = context;
         this.deviceInfo = deviceInfo;
+    }
+
+    // Try to resolve an Activity from the provided Context by unwrapping ContextWrappers.
+    private Activity resolveActivityContext() {
+        if (context == null) return null;
+        if (context instanceof Activity) return (Activity) context;
+        android.content.Context ctx = context;
+        while (ctx instanceof android.content.ContextWrapper) {
+            if (ctx instanceof Activity) return (Activity) ctx;
+            ctx = ((android.content.ContextWrapper) ctx).getBaseContext();
+            if (ctx == null) break;
+        }
+        return null;
     }
 
     /**
@@ -138,13 +154,15 @@ public class AdDisplayManager {
     private boolean handleRenderOverride(String placementId,
                                          String adm,
                                          AdPosition position,
-                                         AdRenderType renderType,
+                                         AdType.Type renderType,
                                          AdCallback callback) {
         if (callback == null || adm == null || adm.isEmpty()) {
             return false;
         }
         try {
-            AdRenderContext context = new AdRenderContext(placementId, adm, position, renderType);
+            // sanitize ADM before passing to the host app so wrappers like document.write(...) are removed
+            String cleanAdm = sanitizeAdm(adm);
+            AdRenderContext context = new AdRenderContext(placementId, cleanAdm, position, renderType);
             boolean handled = callback.onAdRenderOverride(context);
             if (handled) {
                 SDKLogger.d(TAG, "Render override accepted for placement " + placementId + " (" + renderType + ")");
@@ -155,6 +173,122 @@ public class AdDisplayManager {
             return false;
         }
     }
+
+    // Helper to remove common JS wrappers around ADM responses, e.g. document.write('...');
+    private String sanitizeAdm(String adm) {
+        if (adm == null) return null;
+
+        String current = adm;
+        // Try up to a few iterations to peel nested document.write wrappers
+        for (int iter = 0; iter < 5; iter++) {
+            String trimmed = current.trim();
+
+            // Quick check
+            String lower = trimmed.toLowerCase();
+            if (!lower.contains("document.write") && !lower.contains("document.writeln")) {
+                break;
+            }
+
+            // First attempt: regex match (handles many common cases)
+            Pattern p = Pattern.compile("(?is).*document\\.writeln?\\s*\\((.*)\\)\\s*;?\\s*$");
+            Matcher m = p.matcher(trimmed);
+            String extracted = null;
+            if (m.matches()) {
+                extracted = m.group(1);
+            } else {
+                // Fallback: find the first document.write/writeln and extract balanced parentheses
+                int docIdx = lower.indexOf("document.write");
+                if (docIdx == -1) docIdx = lower.indexOf("document.writeln");
+                if (docIdx != -1) {
+                    int openIdx = trimmed.indexOf('(', docIdx);
+                    if (openIdx >= 0) {
+                        int depth = 0;
+                        int closeIdx = -1;
+                        for (int i = openIdx; i < trimmed.length(); i++) {
+                            char c = trimmed.charAt(i);
+                            if (c == '(') depth++;
+                            else if (c == ')') {
+                                depth--;
+                                if (depth == 0) {
+                                    closeIdx = i;
+                                    break;
+                                }
+                            }
+                        }
+                        if (closeIdx > openIdx) {
+                            extracted = trimmed.substring(openIdx + 1, closeIdx);
+                        }
+                    }
+                }
+            }
+
+            if (extracted == null) {
+                // nothing we can extract this iteration
+                break;
+            }
+
+            String inner = extracted.trim();
+            inner = unwrapFunctionWrapping(inner);
+
+            // strip surrounding quotes/backticks if present
+            if (inner.length() >= 2) {
+                char start = inner.charAt(0);
+                char end = inner.charAt(inner.length() - 1);
+                if ((start == '\'' && end == '\'') || (start == '"' && end == '"') || (start == '`' && end == '`')) {
+                    inner = inner.substring(1, inner.length() - 1);
+                }
+            }
+
+            // Unescape common JS escape sequences
+            inner = inner.replace("\\'", "'")
+                    .replace("\\\"", "\"")
+                    .replace("\\\\", "\\")
+                    .replace("\\n", "\n")
+                    .replace("\\r", "\r")
+                    .replace("\\/", "/");
+
+            // Try to URL-decode if it looks percent-encoded
+            if (inner.contains("%3C") || inner.contains("%3c") || inner.contains("%22") || inner.contains("%7B")) {
+                try {
+                    inner = URLDecoder.decode(inner, StandardCharsets.UTF_8.name());
+                } catch (Exception ignored) {
+                }
+            }
+
+            // If we've extracted something different, assign and loop to remove further wrappers
+            if (!inner.equals(current)) {
+                current = inner;
+                continue; // try another iteration
+            } else {
+                break;
+            }
+        }
+
+        return current;
+    }
+
+    // Peel off common function wrappers like unescape(...), decodeURIComponent(...)
+    private String unwrapFunctionWrapping(String s) {
+        if (s == null) return null;
+        String out = s.trim();
+        Pattern pf = Pattern.compile("(?is)^(\\\\w+)\\\\s*\\\\((.*)\\\\)\\\\s*$");
+        boolean peeled = true;
+        while (peeled) {
+            peeled = false;
+            Matcher mf = pf.matcher(out);
+            if (mf.matches()) {
+                String fn = mf.group(1);
+                String inner = Objects.requireNonNull(mf.group(2)).trim();
+                assert fn != null;
+                if (fn.equalsIgnoreCase("unescape") || fn.equalsIgnoreCase("decodeURIComponent") || fn.equalsIgnoreCase("decodeURI")) {
+                    out = inner;
+                    peeled = true;
+                }
+            }
+        }
+        return out;
+    }
+
 
     /**
      * Helper method to send HTTP requests and parse responses into BidscubeResponse
@@ -280,53 +414,116 @@ public class AdDisplayManager {
             @Override
             public void onSuccess(int responseCode, BidscubeResponse response) {
                 ((Activity) context).runOnUiThread(() -> {
+                    try {
+                        setResponseAdPosition(response.getPosition());
+                        AdPosition effectivePosition = getEffectiveAdPosition();
 
-                    setResponseAdPosition(response.getPosition());
-                    AdPosition effectivePosition = getEffectiveAdPosition();
+                        SDKLogger.d(TAG, "Image ad response position: " + response.getPosition() + " -> " + effectivePosition);
 
-                    SDKLogger.d(TAG,
-                            "Image ad response position: " + response.getPosition() + " -> " + effectivePosition);
-
-                    if (handleRenderOverride(placementId, response.getAdm(), effectivePosition, AdRenderType.IMAGE, callback)) {
-                        SDKLogger.d(TAG, "Image ad rendering overridden by host app");
-                        return;
-                    }
-
-                    if (effectivePosition == AdPosition.FULL_SCREEN) {
-                        SDKLogger.d(TAG, "Response indicates full screen display for image ad");
-
-
-                        Dialog dialog = new Dialog(context, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-                        FrameLayout container = createImageAdViewWithCloseButton(response.getAdm(), dialog);
-                        dialog.setContentView(container);
-                        centerFullScreenDialog(dialog, container);
-                        dialog.show();
-
-                        SDKLogger.d(TAG,
-                                "Image ad displayed fullscreen with position: " + response.getPosition() + " -> "
-                                        + effectivePosition);
-                    } else {
-                        SDKLogger.d(TAG, "Response indicates windowed display for image ad");
-
-
-                        Dialog dialog = new Dialog(context);
-                        String positionName = getPositionDisplayName();
-                        dialog.setTitle("Image Ad - " + positionName);
-
-                        FrameLayout container = createImageAdViewWithCloseButton(response.getAdm(), dialog);
-                        dialog.setContentView(container);
-
-                        Window window = dialog.getWindow();
-                        if (window != null) {
-                            int dialogWidth = (int) (context.getResources().getDisplayMetrics().widthPixels * 0.8);
-                            int dialogHeight = (int) (context.getResources().getDisplayMetrics().heightPixels * 0.6);
-                            positionWindowedDialog(window, dialogWidth, dialogHeight);
+                        // Always render internally (no host render override). Sanitize ADM.
+                        final String adm = sanitizeAdm(response.getAdm());
+                        if (adm == null || adm.isEmpty()) {
+                            SDKLogger.e(TAG, "Empty ADM for placement " + placementId);
+                            if (callback != null) callback.onAdFailed(placementId, -1, "Empty ADM");
+                            return;
                         }
 
-                        dialog.show();
+                        // Clean up previous banner / overlay
+                        try {
+                            // Clear any attached native banners built via NativeAdBinder
+                            try { NativeAdBinder.clearAttachedBanner(); } catch (Throwable ignored) {}
 
-                        SDKLogger.d(TAG, "Image ad displayed windowed with position: " + response.getPosition() + " -> "
-                                + effectivePosition);
+                            if (currentBanner != null) {
+                                currentBanner.destroy();
+                                currentBanner = null;
+                            }
+                            if (overlayContainer != null && overlayContainer.getParent() instanceof ViewGroup) {
+                                ((ViewGroup) overlayContainer.getParent()).removeView(overlayContainer);
+                            }
+                            overlayContainer = null;
+                        } catch (Exception ex) {
+                            SDKLogger.d(TAG, "Error cleaning previous banner overlay: " + ex.getMessage());
+                        }
+
+                        // Allow host to intercept rendering via the generic onAdRenderOverride; if they handle it,
+                        // skip internal rendering. Use the sanitized adm we computed earlier.
+                        if (handleRenderOverride(placementId, adm, effectivePosition, AdType.Type.IMAGE, callback)) {
+                            SDKLogger.d(TAG, "Image ad rendering overridden by host for placement " + placementId);
+                            return;
+                        }
+
+                        // Create banner WebView via factory
+                        currentBanner = BannerViewFactory.createBanner(context, adm);
+
+                        // Determine an initial banner height so the WebView is visible immediately. Use 250dp for
+                        // non-fullscreen banners; full screen uses MATCH_PARENT.
+                        int defaultHeightPx = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 250, context.getResources().getDisplayMetrics());
+
+                        // Prepare banner layout params and gravity according to position. Use explicit px height
+                        // for non-fullscreen to avoid WRAP_CONTENT measuring to 0 before JS runs.
+                        FrameLayout.LayoutParams bannerParams = new FrameLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT);
+
+                        if (effectivePosition == AdPosition.FULL_SCREEN) {
+                            bannerParams.width = ViewGroup.LayoutParams.MATCH_PARENT;
+                            bannerParams.height = ViewGroup.LayoutParams.MATCH_PARENT;
+                            bannerParams.gravity = Gravity.CENTER;
+                        } else {
+                            switch (effectivePosition) {
+                                case HEADER:
+                                    bannerParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+                                    break;
+                                case FOOTER:
+                                    bannerParams.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+                                    break;
+                                case SIDEBAR:
+                                    bannerParams.gravity = Gravity.LEFT | Gravity.CENTER_VERTICAL;
+                                    break;
+                                default:
+                                    bannerParams.gravity = Gravity.CENTER;
+                                    break;
+                            }
+                        }
+
+                        // Create a container sized like the banner area and add the banner inside it.
+                        overlayContainer = new FrameLayout(context);
+                        int overlayHeight = (bannerParams.height == ViewGroup.LayoutParams.WRAP_CONTENT) ? defaultHeightPx : bannerParams.height;
+                        FrameLayout.LayoutParams overlayParams = new FrameLayout.LayoutParams(
+                                bannerParams.width, overlayHeight, bannerParams.gravity);
+                        overlayContainer.setLayoutParams(overlayParams);
+                        overlayContainer.setBackgroundColor(Color.TRANSPARENT);
+                        // add currentBanner with MATCH_PARENT width and either default height or MATCH_PARENT
+                        FrameLayout.LayoutParams insideLp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                                (overlayHeight == ViewGroup.LayoutParams.MATCH_PARENT) ? ViewGroup.LayoutParams.MATCH_PARENT : ViewGroup.LayoutParams.MATCH_PARENT);
+                        overlayContainer.addView(currentBanner, insideLp);
+
+                        // Attach overlay to activity content root (the overlay only occupies the banner area)
+                        Activity activity = resolveActivityContext();
+                        if (activity != null) {
+                            ViewGroup root = activity.findViewById(android.R.id.content);
+                            if (root != null) {
+                                // make overlay interactive and ensure it's on top
+                                overlayContainer.setClickable(true);
+                                root.addView(overlayContainer);
+                                overlayContainer.bringToFront();
+                                overlayContainer.requestLayout();
+                                if (currentBanner != null) currentBanner.requestLayout();
+                                SDKLogger.d(TAG, "Image ad overlay (sized) added to activity content for placement " + placementId);
+                                if (callback != null) callback.onAdLoaded(placementId);
+                            } else {
+                                SDKLogger.e(TAG, "Activity root (android.R.id.content) not found");
+                                if (callback != null)
+                                    callback.onAdFailed(placementId, -1, "Activity root not found");
+                            }
+                        } else {
+                            SDKLogger.e(TAG, "Could not resolve Activity from Context - ensure SDK initialized with an Activity context");
+                            if (callback != null)
+                                callback.onAdFailed(placementId, -1, "Could not resolve Activity from Context");
+                        }
+                    } catch (Exception e) {
+                        SDKLogger.e(TAG, "Error rendering image ad: " + e.getMessage());
+                        if (callback != null) callback.onAdFailed(placementId, -1, e.getMessage());
                     }
                 });
             }
@@ -334,14 +531,21 @@ public class AdDisplayManager {
             @Override
             public void onFail(Exception e) {
                 SDKLogger.e(TAG, "Error loading image ad: " + e.getMessage());
+                ((Activity) context).runOnUiThread(() -> {
+                    if (callback != null) callback.onAdFailed(placementId, -1, e.getMessage());
+                });
             }
         });
     }
+
 
     /**
      * Creates image ad view
      */
     private View createImageAdView(String responseBody) {
+
+        // sanitize ADM wrappers if present
+        responseBody = sanitizeAdm(responseBody);
 
         if (currentBanner != null) {
             currentBanner.destroy();
@@ -352,7 +556,7 @@ public class AdDisplayManager {
 
         LinearLayout container = new LinearLayout(context);
         container.setOrientation(LinearLayout.VERTICAL);
-        container.setPadding(16, 16, 16, 16);
+        container.setPadding(50, 16, 16, 16);
         container.addView(currentBanner);
 
         return container;
@@ -362,6 +566,9 @@ public class AdDisplayManager {
      * Creates image ad view with close button
      */
     private FrameLayout createImageAdViewWithCloseButton(String responseBody, Dialog dialog) {
+
+        // sanitize ADM wrappers (document.write etc.) before creating banner view
+        responseBody = sanitizeAdm(responseBody);
 
         if (currentBanner != null) {
             currentBanner.destroy();
@@ -395,7 +602,7 @@ public class AdDisplayManager {
             }
         }
 
-        bannerParams.setMargins(16, 16, 16, 16);
+        //bannerParams.setMargins(16, 16, 16, 16);
         container.addView(currentBanner, bannerParams);
 
         SDKLogger.d(TAG, "Image ad positioned: " + getPositioningDescription());
@@ -418,9 +625,9 @@ public class AdDisplayManager {
                     SDKLogger.d(TAG, "Video ad response position: " + responseBody.getPosition() + " -> "
                             + effectivePosition);
 
-                    String adm = responseBody.getAdm();
+                    final String adm = sanitizeAdm(responseBody.getAdm());
 
-                    if (handleRenderOverride(placementId, adm, effectivePosition, AdRenderType.VIDEO, callback)) {
+                    if (handleRenderOverride(placementId, adm, effectivePosition, AdType.Type.VIDEO, callback)) {
                         SDKLogger.d(TAG, "Video ad rendering overridden by host app");
                         return;
                     }
@@ -877,12 +1084,50 @@ public class AdDisplayManager {
                     setResponseAdPosition(responseBody.getPosition());
                     AdPosition effectivePosition = getEffectiveAdPosition();
 
-                    if (handleRenderOverride(placementId, responseBody.getAdm(), effectivePosition, AdRenderType.NATIVE, callback)) {
-                        SDKLogger.d(TAG, "Native full screen ad rendering overridden by host app");
+                    // Parse native ad and give host a typed model to render (backwards-compatible)
+                    String sanitized = sanitizeAdm(responseBody.getAdm());
+                    com.bidscube.sdk.models.natives.NativeAd nativeAd = null;
+                    try {
+                        nativeAd = com.bidscube.sdk.network.NativeAdParser.parseFromAdm(sanitized);
+                    } catch (Exception e) {
+                        SDKLogger.d(TAG, "Failed to parse native ad model: " + e.getMessage());
+                    }
+
+                    // First allow host to render using the generic onAdRenderOverride (preferred)
+                    boolean hostRendered = false;
+                    try {
+                        if (callback != null) {
+                            com.bidscube.sdk.models.AdRenderContext ctx = new com.bidscube.sdk.models.AdRenderContext(placementId, sanitized, effectivePosition, AdType.Type.NATIVE, nativeAd);
+                            hostRendered = callback.onAdRenderOverride(ctx);
+                        }
+                    } catch (Exception e) {
+                        SDKLogger.e(TAG, "Host onAdRenderOverride threw: " + e.getMessage());
+                    }
+
+                    // If host implements the generic onAdRenderOverride, call it (pass parsed nativeAd in context)
+                    if (!hostRendered) {
+                        try {
+                            if (callback != null) {
+                                com.bidscube.sdk.models.AdRenderContext ctx2 = new com.bidscube.sdk.models.AdRenderContext(placementId, sanitized, effectivePosition, AdType.Type.NATIVE, nativeAd);
+                                hostRendered = callback.onAdRenderOverride(ctx2);
+                            }
+                        } catch (Exception e) {
+                            SDKLogger.e(TAG, "Host onAdRenderOverride (fallback) threw: " + e.getMessage());
+                        }
+                    }
+
+                    if (hostRendered) {
+                        SDKLogger.d(TAG, "Native full screen ad rendering handled by host");
                         return;
                     }
 
-                    showNativeAdInDialog(responseBody.getAdm(), true, "URL");
+                    // Fallback to the legacy generic render-override hook (HTML-based) as last resort
+                    if (handleRenderOverride(placementId, responseBody.getAdm(), effectivePosition, AdType.Type.NATIVE, callback)) {
+                        SDKLogger.d(TAG, "Native full screen ad rendering overridden by host app (legacy)");
+                        return;
+                    }
+
+                    showNativeAdInDialog(sanitized, true, "URL");
                 });
             }
 
@@ -911,12 +1156,48 @@ public class AdDisplayManager {
                     setResponseAdPosition(responseBody.getPosition());
                     AdPosition effectivePosition = getEffectiveAdPosition();
 
-                    if (handleRenderOverride(placementId, responseBody.getAdm(), effectivePosition, AdRenderType.NATIVE, callback)) {
-                        SDKLogger.d(TAG, "Native windowed ad rendering overridden by host app");
+                    String sanitized = sanitizeAdm(responseBody.getAdm());
+                    com.bidscube.sdk.models.natives.NativeAd nativeAd = null;
+                    try {
+                        nativeAd = com.bidscube.sdk.network.NativeAdParser.parseFromAdm(sanitized);
+                    } catch (Exception e) {
+                        SDKLogger.d(TAG, "Failed to parse native ad model: " + e.getMessage());
+                    }
+
+                    // Preferred: allow host to render via the generic onAdRenderOverride (pass parsed native model)
+                    boolean hostRendered = false;
+                    try {
+                        if (callback != null) {
+                            com.bidscube.sdk.models.AdRenderContext ctx = new com.bidscube.sdk.models.AdRenderContext(placementId, sanitized, effectivePosition, AdType.Type.NATIVE, nativeAd);
+                            hostRendered = callback.onAdRenderOverride(ctx);
+                        }
+                    } catch (Exception e) {
+                        SDKLogger.e(TAG, "Host onAdRenderOverride threw: " + e.getMessage());
+                    }
+
+                    // If host implements the generic onAdRenderOverride, call it (pass parsed nativeAd in context)
+                    if (!hostRendered) {
+                        try {
+                            if (callback != null) {
+                                com.bidscube.sdk.models.AdRenderContext ctx2 = new com.bidscube.sdk.models.AdRenderContext(placementId, sanitized, effectivePosition,AdType.Type.NATIVE, nativeAd);
+                                hostRendered = callback.onAdRenderOverride(ctx2);
+                            }
+                        } catch (Exception e) {
+                            SDKLogger.e(TAG, "Host onAdRenderOverride (fallback) threw: " + e.getMessage());
+                        }
+                    }
+
+                    if (hostRendered) {
+                        SDKLogger.d(TAG, "Native windowed ad rendering handled by host");
                         return;
                     }
 
-                    showNativeAdInDialog(responseBody.getAdm(), false, "URL");
+                    if (handleRenderOverride(placementId, responseBody.getAdm(), effectivePosition, AdType.Type.NATIVE, callback)) {
+                        SDKLogger.d(TAG, "Native windowed ad rendering overridden by host app (legacy)");
+                        return;
+                    }
+
+                    showNativeAdInDialog(sanitized, false, "URL");
                 });
             }
 
@@ -965,8 +1246,8 @@ public class AdDisplayManager {
 
                     adContainer.removeView(loadingText);
 
-                    if (handleRenderOverride(placementId, response.getAdm(), getEffectiveAdPosition(), AdRenderType.IMAGE, callback)) {
-                        adContainer.removeAllViews();
+                    if (handleRenderOverride(placementId, response.getAdm(), getEffectiveAdPosition(), AdType.Type.IMAGE, callback)) {
+                        adContainer.removeView(loadingText);
                         SDKLogger.d(TAG, "Image ad view rendering overridden by host app");
                         return;
                     }
@@ -1043,13 +1324,13 @@ public class AdDisplayManager {
                     adContainer.removeView(loadingText);
 
                     try {
-                        if (handleRenderOverride(placementId, responseBody.getAdm(), getEffectiveAdPosition(), AdRenderType.VIDEO, callback)) {
+                        if (handleRenderOverride(placementId, responseBody.getAdm(), getEffectiveAdPosition(), AdType.Type.VIDEO, callback)) {
                             adContainer.removeView(loadingText);
                             SDKLogger.d(TAG, "Video ad view rendering overridden by host app");
                             return;
                         }
 
-                        String adm = responseBody.getAdm();
+                        final String adm = sanitizeAdm(responseBody.getAdm());
                         SDKLogger.v("VastResponse", adm);
                         VastParser.analyzeVast(adm);
                         String vastRedirectUrl = VastParser.getClickThroughUrl(adm);
@@ -1109,8 +1390,8 @@ public class AdDisplayManager {
                     errorText.setGravity(Gravity.CENTER);
                     adContainer.addView(errorText);
 
-                        if (callback != null) {
-                            callback.onAdFailed(placementId, -1, e.getMessage());
+                    if (callback != null) {
+                        callback.onAdFailed(placementId, -1, e.getMessage());
                     }
 
                     SDKLogger.e(TAG, "Failed to get video ad view: " + e.getMessage());
@@ -1158,17 +1439,41 @@ public class AdDisplayManager {
                     try {
                         SDKLogger.d(TAG, "Native ad response received: " + responseBody);
 
-                        if (handleRenderOverride(placementId, responseBody.getAdm(), getEffectiveAdPosition(), AdRenderType.NATIVE, callback)) {
-                            adContainer.removeView(loadingText);
-                            SDKLogger.d(TAG, "Native ad view rendering overridden by host app");
+                        String sanitized = sanitizeAdm(responseBody.getAdm());
+                        com.bidscube.sdk.models.natives.NativeAd nativeAd = null;
+                        try {
+                            nativeAd = NativeAdParser.parseFromAdm(sanitized);
+                        } catch (Exception e) {
+                            SDKLogger.d(TAG, "Failed to parse native ad model: " + e.getMessage());
+                        }
+
+                        // Preferred: allow host to render via the generic onAdRenderOverride (pass parsed native model)
+                        boolean hostRendered = false;
+                        try {
+                            if (callback != null) {
+                                AdRenderContext ctx = new AdRenderContext(placementId, sanitized, getEffectiveAdPosition(), AdType.Type.NATIVE, nativeAd);
+                                hostRendered = callback.onAdRenderOverride(ctx);
+                            }
+                        } catch (Exception e) {
+                            SDKLogger.e(TAG, "Host onAdRenderOverride threw: " + e.getMessage());
+                        }
+
+                        if (hostRendered) {
+                            SDKLogger.d(TAG, "Native ad view handled by host");
                             return;
                         }
 
-                        NativeAd nativeAd = NativeAdParser.parseFromAdm(responseBody.getAdm());
+                        if (handleRenderOverride(placementId, responseBody.getAdm(), getEffectiveAdPosition(), AdType.Type.NATIVE, callback)) {
+                            adContainer.removeView(loadingText);
+                            SDKLogger.d(TAG, "Native ad view rendering overridden by host app (legacy)");
+                            return;
+                        }
+
                         if (nativeAd != null) {
 
+                            NativeAd nativeAdLocal = nativeAd;
                             NativeAdView nativeAdView = new NativeAdView(context);
-                            nativeAdView.setNativeAd(nativeAd);
+                            nativeAdView.setNativeAd(nativeAdLocal);
                             nativeAdView.setLayoutParams(new LinearLayout.LayoutParams(
                                     ViewGroup.LayoutParams.MATCH_PARENT,
                                     ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -1180,7 +1485,7 @@ public class AdDisplayManager {
                             }
 
                             SDKLogger.d(TAG, "Native ad view created and integrated into container with " +
-                                    (nativeAd.assets != null ? nativeAd.assets.size() : 0) + " assets");
+                                    (nativeAdLocal.assets != null ? nativeAdLocal.assets.size() : 0) + " assets");
                         } else {
                             throw new Exception("Failed to parse native ad from response");
                         }
@@ -1386,19 +1691,30 @@ public class AdDisplayManager {
      * Cleans up resources
      */
     public void cleanup() {
+        // Clear banners attached by NativeAdBinder
+        try { NativeAdBinder.clearAttachedBanner(); } catch (Throwable ignored) {}
+
         if (currentBanner != null) {
-            currentBanner.destroy();
+            try { currentBanner.destroy(); } catch (Throwable ignored) {}
             currentBanner = null;
         }
 
         if (currentVideoPlayer != null) {
-            currentVideoPlayer.release();
+            try { currentVideoPlayer.release(); } catch (Throwable ignored) {}
             currentVideoPlayer = null;
         }
 
         if (currentNativeAd != null) {
             currentNativeAd = null;
         }
+
+        // Remove any overlay container we added to the activity
+        try {
+            if (overlayContainer != null && overlayContainer.getParent() instanceof ViewGroup) {
+                ((ViewGroup) overlayContainer.getParent()).removeView(overlayContainer);
+            }
+        } catch (Throwable ignored) {}
+        overlayContainer = null;
 
         if (context instanceof Activity) {
             Activity activity = (Activity) context;

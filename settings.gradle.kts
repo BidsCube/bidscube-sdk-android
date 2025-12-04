@@ -14,3 +14,5 @@ pluginManagement {
 
 rootProject.name = "bidscube-sdk"
 include(":sdk")
+//comment to ignore test app
+//include(":bidscube-testapp-android")

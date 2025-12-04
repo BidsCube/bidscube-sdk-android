@@ -1,7 +1,6 @@
 package com.bidscube.sdk;
 
 import android.content.Context;
-import android.util.Log;
 import android.view.View;
 
 import androidx.annotation.OptIn;
@@ -73,12 +72,12 @@ public class BidscubeSDK {
      * Show skippable video ad - display mode determined by response position
      *
      * @param placementId       Ad placement ID
-     * @param installButtonText Custom text for install button
      * @param callback          Callback for ad events
      */
-    public static void showSkippableVideoAd(String placementId, String installButtonText, AdCallback callback) {
+    @Deprecated
+    public static void showSkippableVideoAd(String placementId, AdCallback callback) {
         checkInitialization();
-        sdkInstance.showSkippableVideoAd(placementId, installButtonText, callback);
+        sdkInstance.showSkippableVideoAd(placementId, callback);
     }
 
     /**

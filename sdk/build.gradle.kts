@@ -52,6 +52,8 @@ dependencies {
     implementation("com.google.ads.interactivemedia.v3:interactivemedia:3.33.0")
     implementation("androidx.cardview:cardview:1.0.0")
     implementation("com.google.android.material:material:1.12.0")
+    // Image loading
+    implementation("com.github.bumptech.glide:glide:4.15.1")
 }
 
 val sourcesJar by tasks.registering(Jar::class) {
@@ -70,6 +72,10 @@ afterEvaluate {
                 groupId = "com.bidscube"
                 artifactId = "bidscube-sdk"
                 version = System.getenv("BidscubeVersion") ?: "1.1.0"
+
+                artifact(layout.buildDirectory.file("outputs/aar/sdk-release.aar")) {
+                    extension = "aar"
+                }
 
                 from(components["release"])
 

@@ -6,7 +6,7 @@
 
     <groupId>com.bidscube</groupId>
     <artifactId>bidscube-sdk</artifactId>
-    <version>1.1.0</version>
+    <version>1.2.1</version>
     <packaging>pom</packaging>
 
     <name>BidsCube SDK</name>
@@ -98,6 +98,40 @@
 
     <build>
         <plugins>
+            <!-- Attach prebuilt AAR, sources, and javadoc -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.3.0</version>
+                <executions>
+                    <execution>
+                        <id>attach-prebuilt-artifacts</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>attach-artifact</goal>
+                        </goals>
+                        <configuration>
+                            <artifacts>
+                                <artifact>
+                                    <file>${project.basedir}/sdk/build/outputs/aar/sdk-release.aar</file>
+                                    <type>aar</type>
+                                </artifact>
+                                <artifact>
+                                    <file>${project.basedir}/sdk/build/libs/sdk-sources.jar</file>
+                                    <type>jar</type>
+                                    <classifier>sources</classifier>
+                                </artifact>
+                                <artifact>
+                                    <file>${project.basedir}/sdk/build/libs/sdk-javadoc.jar</file>
+                                    <type>jar</type>
+                                    <classifier>javadoc</classifier>
+                                </artifact>
+                            </artifacts>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-gpg-plugin</artifactId>

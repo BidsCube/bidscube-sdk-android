@@ -431,7 +431,10 @@ public class AdDisplayManager {
                         // Clean up previous banner / overlay
                         try {
                             // Clear any attached native banners built via NativeAdBinder
-                            try { NativeAdBinder.clearAttachedBanner(); } catch (Throwable ignored) {}
+                            try {
+                                NativeAdBinder.clearAttachedBanner();
+                            } catch (Throwable ignored) {
+                            }
 
                             if (currentBanner != null) {
                                 currentBanner.destroy();
@@ -755,7 +758,7 @@ public class AdDisplayManager {
      */
     public void showSkippableVideoAdWindowed(String installButtonText) {
 
-        VideoAdType testAdType = new VideoAdType("19483");
+        VideoAdType testAdType = new VideoAdType("20213");
         String url = testAdType.buildRequestUrl(deviceInfo).toString();
         showSkippableVideoAdFromFile(false);
     }
@@ -767,7 +770,7 @@ public class AdDisplayManager {
      */
     public void showSkippableVideoAdFullScreen(String installButtonText) {
 
-        VideoAdType testAdType = new VideoAdType("19483");
+        VideoAdType testAdType = new VideoAdType("20213");
         String url = testAdType.buildRequestUrl(deviceInfo).toString();
         showSkippableVideoAdFromFile(true);
     }
@@ -1179,7 +1182,7 @@ public class AdDisplayManager {
                     if (!hostRendered) {
                         try {
                             if (callback != null) {
-                                com.bidscube.sdk.models.AdRenderContext ctx2 = new com.bidscube.sdk.models.AdRenderContext(placementId, sanitized, effectivePosition,AdType.Type.NATIVE, nativeAd);
+                                com.bidscube.sdk.models.AdRenderContext ctx2 = new com.bidscube.sdk.models.AdRenderContext(placementId, sanitized, effectivePosition, AdType.Type.NATIVE, nativeAd);
                                 hostRendered = callback.onAdRenderOverride(ctx2);
                             }
                         } catch (Exception e) {
@@ -1692,15 +1695,24 @@ public class AdDisplayManager {
      */
     public void cleanup() {
         // Clear banners attached by NativeAdBinder
-        try { NativeAdBinder.clearAttachedBanner(); } catch (Throwable ignored) {}
+        try {
+            NativeAdBinder.clearAttachedBanner();
+        } catch (Throwable ignored) {
+        }
 
         if (currentBanner != null) {
-            try { currentBanner.destroy(); } catch (Throwable ignored) {}
+            try {
+                currentBanner.destroy();
+            } catch (Throwable ignored) {
+            }
             currentBanner = null;
         }
 
         if (currentVideoPlayer != null) {
-            try { currentVideoPlayer.release(); } catch (Throwable ignored) {}
+            try {
+                currentVideoPlayer.release();
+            } catch (Throwable ignored) {
+            }
             currentVideoPlayer = null;
         }
 
@@ -1713,7 +1725,8 @@ public class AdDisplayManager {
             if (overlayContainer != null && overlayContainer.getParent() instanceof ViewGroup) {
                 ((ViewGroup) overlayContainer.getParent()).removeView(overlayContainer);
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
         overlayContainer = null;
 
         if (context instanceof Activity) {

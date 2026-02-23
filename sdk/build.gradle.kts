@@ -71,7 +71,7 @@ afterEvaluate {
             create<MavenPublication>("release") {
                 groupId = "com.bidscube"
                 artifactId = "bidscube-sdk"
-                version = System.getenv("BidscubeVersion") ?: "1.2.0"
+                version = System.getenv("BidscubeVersion") ?: "1.2.2"
 
 //                artifact(layout.buildDirectory.file("outputs/aar/sdk-release.aar")) {
 //                    extension = "aar"

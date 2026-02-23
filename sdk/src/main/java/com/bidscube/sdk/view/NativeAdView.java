@@ -32,6 +32,7 @@ import com.bidscube.sdk.models.natives.Image;
 import com.bidscube.sdk.models.natives.NativeData;
 import com.bidscube.sdk.models.natives.Video;
 import com.bidscube.sdk.models.natives.NativeLink;
+import com.bidscube.sdk.network.NativeImpressionTracker;
 import com.bidscube.sdk.utils.SDKLogger;
 
 import java.io.InputStream;
@@ -56,6 +57,7 @@ public class NativeAdView extends CardView {
 
     private NativeAd nativeAd;
     private OnNativeAdClickListener clickListener;
+    private boolean impressionSent = false;
 
     private final ExecutorService imageExecutor = Executors.newCachedThreadPool();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -218,6 +220,7 @@ public class NativeAdView extends CardView {
      */
     public void setNativeAd(NativeAd ad) {
         this.nativeAd = ad;
+        this.impressionSent = false;
         if (ad == null) {
             Log.w("NativeAdView", "NativeAd is null");
             return;
@@ -228,6 +231,7 @@ public class NativeAdView extends CardView {
 
         populateView();
         setupClickListeners();
+        maybeFireNativeImpression();
     }
 
     private void populateView() {
@@ -603,6 +607,20 @@ public class NativeAdView extends CardView {
         if (!TextUtils.isEmpty(iconUrl)) {
             loadImageFromUrl(iconUrl, adIcon);
         }
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        maybeFireNativeImpression();
+    }
+
+    private synchronized void maybeFireNativeImpression() {
+        if (impressionSent || nativeAd == null || !isAttachedToWindow()) {
+            return;
+        }
+
+        impressionSent = NativeImpressionTracker.fireIfNeeded(nativeAd, "native_view_attached");
     }
 
     @Override

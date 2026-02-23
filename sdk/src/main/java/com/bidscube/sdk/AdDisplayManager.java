@@ -1120,6 +1120,7 @@ public class AdDisplayManager {
                     }
 
                     if (hostRendered) {
+                        com.bidscube.sdk.network.NativeImpressionTracker.fireIfNeeded(nativeAd, "host_render_override_fullscreen_url");
                         SDKLogger.d(TAG, "Native full screen ad rendering handled by host");
                         return;
                     }
@@ -1191,6 +1192,7 @@ public class AdDisplayManager {
                     }
 
                     if (hostRendered) {
+                        com.bidscube.sdk.network.NativeImpressionTracker.fireIfNeeded(nativeAd, "host_render_override_windowed_url");
                         SDKLogger.d(TAG, "Native windowed ad rendering handled by host");
                         return;
                     }
@@ -1462,6 +1464,7 @@ public class AdDisplayManager {
                         }
 
                         if (hostRendered) {
+                            com.bidscube.sdk.network.NativeImpressionTracker.fireIfNeeded(nativeAd, "host_render_override_embedded_view");
                             SDKLogger.d(TAG, "Native ad view handled by host");
                             return;
                         }

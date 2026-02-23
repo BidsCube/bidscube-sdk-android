@@ -29,10 +29,10 @@ repositories {
 
 dependencies {
     // Request the AAR artifact explicitly. Use this when the repository exposes the SDK as an AAR
-    implementation("com.bidscube:bidscube-sdk:1.2.1@aar")
+    implementation("com.bidscube:bidscube-sdk:1.2.2@aar")
 
     // If the artifact is published with proper AAR packaging Gradle will normally resolve it
-    // implementation("com.bidscube:bidscube-sdk:1.2.1")
+    // implementation("com.bidscube:bidscube-sdk:1.2.2")
 }
 ```
 
@@ -45,8 +45,8 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.bidscube:bidscube-sdk:1.2.1'
-    // or force AAR: implementation 'com.bidscube:bidscube-sdk:1.2.1@aar'
+    implementation 'com.bidscube:bidscube-sdk:1.2.2'
+    // or force AAR: implementation 'com.bidscube:bidscube-sdk:1.2.2@aar'
 }
 ```
 
@@ -546,9 +546,9 @@ This SDK is protected under the MIT License. For full license terms, please refe
 
 ## Version
 
-This README and examples are updated for Bidscube SDK version 1.2.1.
+This README and examples are updated for Bidscube SDK version 1.2.2.
 
-## What's new in 1.2.1 (user-facing)
+## What's new in 1.2.2 (user-facing)
 
 - Unified rendering hook: a single API `AdCallback.onAdRenderOverride(AdRenderContext)` lets hosts fully control rendering for ALL ad types (image/HTML ADM, video, native) — return true to take over rendering and skip the SDK default UI.
 - Native rendering compatibility: the SDK provides helpers so you can render OpenRTB-style native ads with either the provided banner layout or with your custom layout.

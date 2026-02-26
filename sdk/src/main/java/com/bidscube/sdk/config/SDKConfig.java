@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.webkit.WebSettings;
 
 /**
  * Configuration class for the Bidscube SDK
@@ -146,9 +147,7 @@ public class SDKConfig {
                         : String.valueOf(packageInfo.versionCode);
 
                 this.language = context.getResources().getConfiguration().getLocales().get(0).getLanguage();
-
-                this.userAgent = "BidscubeSDK/" + getSDKVersion() + " (Android " + Build.VERSION.RELEASE + "; "
-                        + Build.MODEL + ")";
+                this.userAgent = buildDefaultUserAgent(context);
 
             } catch (Exception e) {
 
@@ -156,8 +155,27 @@ public class SDKConfig {
                 this.appName = "Unknown App";
                 this.appVersion = getSDKVersion();
                 this.language = "en";
-                this.userAgent = "BidscubeSDK/" + getSDKVersion() + " (Android)";
+                this.userAgent = buildDefaultUserAgent(context);
             }
+        }
+
+        private String buildDefaultUserAgent(Context context) {
+            try {
+                String webViewUa = WebSettings.getDefaultUserAgent(context);
+                if (webViewUa != null && !webViewUa.trim().isEmpty()) {
+                    return webViewUa;
+                }
+            } catch (Throwable ignored) {
+                // Fall through to secondary UA sources.
+            }
+
+            String httpAgent = System.getProperty("http.agent");
+            if (httpAgent != null && !httpAgent.trim().isEmpty()) {
+                return httpAgent;
+            }
+
+            return "Mozilla/5.0 (Linux; Android " + Build.VERSION.RELEASE + "; " + Build.MODEL
+                    + ") AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.0.0 Mobile Safari/537.36";
         }
 
         /**

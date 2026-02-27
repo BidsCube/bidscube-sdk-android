@@ -105,10 +105,16 @@ public class DeviceInfoProvider {
     }
 
     private DisplayMetrics getDisplayMetrics() {
-        WindowManager wm = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
         DisplayMetrics metrics = new DisplayMetrics();
+        WindowManager wm = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
         if (wm != null && wm.getDefaultDisplay() != null) {
-            wm.getDefaultDisplay().getMetrics(metrics);
+            try {
+                wm.getDefaultDisplay().getRealMetrics(metrics);
+            } catch (Exception e) {
+                wm.getDefaultDisplay().getMetrics(metrics);
+            }
+        } else {
+            metrics.setTo(context.getResources().getDisplayMetrics());
         }
         return metrics;
     }

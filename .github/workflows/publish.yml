@@ -210,18 +210,18 @@ jobs:
             exit 1
           fi
 
-          SRC=$(find sdk/build/libs -maxdepth 1 -name '*sources*.jar' -print -quit 2>/dev/null || true)
+          SRC=$(find sdk/build -type f -name '*sources*.jar' -print -quit 2>/dev/null || true)
           if [ -z "$SRC" ]; then
-            echo "Error: no sources JAR under sdk/build/libs"
-            ls -la sdk/build/libs || true
+            echo "Error: no sources JAR under sdk/build (run :sdk:releaseSourcesJar)"
+            find sdk/build -type f -name '*.jar' 2>/dev/null | head -30 || true
             exit 1
           fi
           echo "Found sources jar: $SRC"
 
-          DOC=$(find sdk/build/libs -maxdepth 1 -name '*javadoc*.jar' -print -quit 2>/dev/null || true)
+          DOC=$(find sdk/build -type f -name '*javadoc*.jar' -print -quit 2>/dev/null || true)
           if [ -z "$DOC" ]; then
-            echo "Error: no javadoc JAR under sdk/build/libs"
-            ls -la sdk/build/libs || true
+            echo "Error: no javadoc JAR under sdk/build (run :sdk:javaDocReleaseJar)"
+            find sdk/build -type f -name '*.jar' 2>/dev/null | head -30 || true
             exit 1
           fi
           echo "Found javadoc jar: $DOC"

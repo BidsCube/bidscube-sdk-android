@@ -358,6 +358,13 @@ jobs:
             echo "No Maven Central credentials for Gradle; skipping Gradle publish"
             exit 0
           fi
+          mkdir -p "${GNUPGHOME:-$HOME/.gnupg}"
+          touch "${GNUPGHOME:-$HOME/.gnupg}/gpg.conf"
+          grep -q "pinentry-mode loopback" "${GNUPGHOME:-$HOME/.gnupg}/gpg.conf" 2>/dev/null || echo "pinentry-mode loopback" >> "${GNUPGHOME:-$HOME/.gnupg}/gpg.conf"
+          touch "${GNUPGHOME:-$HOME/.gnupg}/gpg-agent.conf"
+          grep -q "allow-loopback-pinentry" "${GNUPGHOME:-$HOME/.gnupg}/gpg-agent.conf" 2>/dev/null || echo "allow-loopback-pinentry" >> "${GNUPGHOME:-$HOME/.gnupg}/gpg-agent.conf"
+          gpgconf --kill gpg-agent 2>/dev/null || true
+
           if [ -f "./gradlew" ]; then
             ./gradlew :sdk:publishReleasePublicationToCentralRepository --no-daemon --stacktrace
           else

@@ -5,6 +5,13 @@ plugins {
     id("signing")
 }
 
+// CI / headless: GnuPG signatory reads signing.gnupg.passphrase (not GPG_PASSPHRASE / signing.password by default).
+val gpgPassFromEnv = System.getenv("GPG_PASSPHRASE")?.trim()?.takeUnless { it.isEmpty() }
+val gpgPassFromProps = (findProperty("signing.password") as String?)?.trim()?.takeUnless { it.isEmpty() }
+(gpgPassFromEnv ?: gpgPassFromProps)?.let { pass ->
+    extra["signing.gnupg.passphrase"] = pass
+}
+
 android {
     namespace = "com.bidscube.sdk"
     compileSdk = 36

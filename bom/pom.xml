@@ -12,8 +12,9 @@
     <name>Bidscube SDK BOM</name>
     <description>
         Bill of Materials for the Bidscube Android stack. The library artifact is com.bidscube:bidscube-sdk (AAR),
-        published from Gradle; import this BOM only when you want aligned dependency versions via Maven or Gradle platform().
+        built from the Gradle :sdk module; import this BOM when you want aligned dependency versions via Maven or Gradle platform().
         Host applications should enable core library desugaring when using IMA / Media3 (see AndroidX release notes).
+        This POM is not deployed from CI; align versions with the SDK release you consume (JitPack, local AAR, or your internal Maven).
     </description>
     <url>https://github.com/BidsCube/bidscube-sdk</url>
 
@@ -43,15 +44,12 @@
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <gpg.executable>gpg</gpg.executable>
-        <gpg.passphrase>${env.GPG_PASSPHRASE}</gpg.passphrase>
 
         <bidscube-sdk.version>1.2.3</bidscube-sdk.version>
         <ump.version>2.2.0</ump.version>
         <play-services-ads-identifier.version>18.0.1</play-services-ads-identifier.version>
         <interactivemedia.version>3.37.0</interactivemedia.version>
         <media3.version>1.4.1</media3.version>
-        <cardview.version>1.0.0</cardview.version>
         <material.version>1.12.0</material.version>
         <glide.version>4.15.1</glide.version>
         <desugar_jdk_libs.version>2.0.4</desugar_jdk_libs.version>
@@ -99,7 +97,7 @@
             <dependency>
                 <groupId>androidx.cardview</groupId>
                 <artifactId>cardview</artifactId>
-                <version>${cardview.version}</version>
+                <version>1.0.0</version>
             </dependency>
 
             <dependency>
@@ -121,75 +119,4 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-gpg-plugin</artifactId>
-                <version>3.0.1</version>
-                <executions>
-                    <execution>
-                        <id>sign-artifacts</id>
-                        <phase>verify</phase>
-                        <goals>
-                            <goal>sign</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-
-            <plugin>
-                <groupId>org.sonatype.central</groupId>
-                <artifactId>central-publishing-maven-plugin</artifactId>
-                <version>0.8.0</version>
-                <extensions>true</extensions>
-                <configuration>
-                    <publishingServerId>central</publishingServerId>
-                    <autoPublish>true</autoPublish>
-                    <waitUntil>published</waitUntil>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
-
-    <profiles>
-        <profile>
-            <id>release</id>
-            <activation>
-                <property>
-                    <name>release</name>
-                </property>
-            </activation>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-gpg-plugin</artifactId>
-                        <version>3.0.1</version>
-                        <executions>
-                            <execution>
-                                <id>sign-artifacts-release</id>
-                                <phase>verify</phase>
-                                <goals>
-                                    <goal>sign</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
-
-    <distributionManagement>
-        <snapshotRepository>
-            <id>central</id>
-            <url>https://central.sonatype.com/repository/maven-snapshots/</url>
-        </snapshotRepository>
-        <repository>
-            <id>central</id>
-            <url>https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/</url>
-        </repository>
-    </distributionManagement>
 </project>

@@ -10,8 +10,8 @@ import java.util.regex.Pattern;
 
 /**
  * Normalizes ad markup payloads: unwraps JSON envelopes {@code {"adm":"..."}}, decodes literal
- * {@code \uXXXX} sequences when the server double-encodes, and extracts embedded {@code {"adm":"..."}}
- * blobs sometimes shipped inside HTML creatives.
+ * backslash-u plus four hex digit sequences when the server double-encodes, and extracts embedded
+ * {@code {"adm":"..."}} blobs sometimes shipped inside HTML creatives.
  */
 public final class AdmPayloadUtils {
 

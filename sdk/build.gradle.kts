@@ -125,6 +125,8 @@ afterEvaluate {
 
     val validateReleasePublication by tasks.registering {
         dependsOn("assembleRelease")
+        dependsOn("releaseSourcesJar")
+        dependsOn("javaDocReleaseJar")
         dependsOn(tasks.named("generatePomFileForReleasePublication"))
         doLast {
             val pub = publishing.publications.findByName("release") as? MavenPublication

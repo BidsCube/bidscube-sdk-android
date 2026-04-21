@@ -1,2 +1,17 @@
 jdk:
   - openjdk17
+
+# Repository may ship without ./gradlew; JitPack still needs a successful install.
+install:
+  - |
+    set -e
+    if [ -f ./gradlew ]; then
+      chmod +x ./gradlew
+      ./gradlew :sdk:assembleRelease --no-daemon --stacktrace
+    else
+      GRADLE_VER=8.11.1
+      wget -q "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip" -O /tmp/gradle-bin.zip
+      unzip -q /tmp/gradle-bin.zip -d /tmp
+      export PATH="/tmp/gradle-${GRADLE_VER}/bin:$PATH"
+      gradle :sdk:assembleRelease --no-daemon --stacktrace
+    fi

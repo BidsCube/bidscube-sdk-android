@@ -2,14 +2,6 @@ plugins {
     id("com.android.library")
     kotlin("android")
     id("maven-publish")
-    id("signing")
-}
-
-// CI / headless: GnuPG signatory reads signing.gnupg.passphrase (not GPG_PASSPHRASE / signing.password by default).
-val gpgPassFromEnv = System.getenv("GPG_PASSPHRASE")?.trim()?.takeUnless { it.isEmpty() }
-val gpgPassFromProps = (findProperty("signing.password") as String?)?.trim()?.takeUnless { it.isEmpty() }
-(gpgPassFromEnv ?: gpgPassFromProps)?.let { pass ->
-    extra["signing.gnupg.passphrase"] = pass
 }
 
 android {
@@ -60,10 +52,6 @@ dependencies {
     implementation("com.github.bumptech.glide:glide:4.15.1")
 }
 
-signing {
-    useGpgCmd()
-}
-
 afterEvaluate {
     publishing {
         publications {
@@ -105,29 +93,30 @@ afterEvaluate {
                         developerConnection.set("scm:git:ssh://github.com/BidsCube/bidscube-sdk.git")
                         url.set("https://github.com/BidsCube/bidscube-sdk")
                     }
+
+                    withXml {
+                        val root = asNode()
+                        val existing = root.get("packaging")
+                        if (existing == null) {
+                            root.appendNode("packaging", "aar")
+                        } else {
+                            val nodeList = existing as groovy.util.NodeList
+                            if (nodeList.isEmpty()) {
+                                root.appendNode("packaging", "aar")
+                            } else {
+                                (nodeList[0] as groovy.util.Node).setValue("aar")
+                            }
+                        }
+                    }
                 }
             }
         }
 
         repositories {
             maven {
-                name = "central"
-                // Legacy s01.oss.sonatype.org OSSRH is EOL; use Central Portal compatibility staging API.
-                url = uri("https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/")
-                credentials {
-                    username = project.findProperty("mavenCentralUsername") as String? ?: ""
-                    password = project.findProperty("mavenCentralPassword") as String? ?: ""
-                }
+                name = "dist"
+                url = uri(rootProject.layout.buildDirectory.dir("maven-repo"))
             }
-        }
-    }
-
-    val releasePub = publishing.publications.findByName("release")
-    if (releasePub != null) {
-        signing.sign(releasePub)
-    } else {
-        publishing.publications.withType(MavenPublication::class.java).forEach {
-            signing.sign(it)
         }
     }
 
@@ -160,6 +149,15 @@ afterEvaluate {
             }
             if ("javadoc" !in classifiers) {
                 throw GradleException("Publication must include a javadoc classifier jar; have: $classifiers")
+            }
+
+            val pomFile = layout.buildDirectory.file("publications/release/pom-default.xml").get().asFile
+            if (!pomFile.exists()) {
+                throw GradleException("Generated POM not found: ${pomFile.path}")
+            }
+            val pomText = pomFile.readText()
+            if (!pomText.contains("<packaging>aar</packaging>")) {
+                throw GradleException("POM must declare <packaging>aar</packaging>; check ${pomFile.path}")
             }
         }
     }

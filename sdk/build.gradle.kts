@@ -112,7 +112,8 @@ afterEvaluate {
         repositories {
             maven {
                 name = "central"
-                url = uri("https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/")
+                // Legacy s01.oss.sonatype.org OSSRH is EOL; use Central Portal compatibility staging API.
+                url = uri("https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/")
                 credentials {
                     username = project.findProperty("mavenCentralUsername") as String? ?: ""
                     password = project.findProperty("mavenCentralPassword") as String? ?: ""

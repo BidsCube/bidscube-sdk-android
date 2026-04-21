@@ -35,7 +35,9 @@ import com.bidscube.sdk.models.natives.NativeAd;
 import com.bidscube.sdk.network.BidscubeCallback;
 import com.bidscube.sdk.network.BidscubeResponse;
 import com.bidscube.sdk.network.NativeAdParser;
+import com.bidscube.sdk.utils.AdmPayloadUtils;
 import com.bidscube.sdk.utils.VastParser;
+import com.bidscube.sdk.config.VideoPlayerProvider;
 import com.bidscube.sdk.utils.SDKLogger;
 import com.bidscube.sdk.view.BannerViewFactory;
 import com.bidscube.sdk.view.IMAPlayerHandler;
@@ -79,6 +81,7 @@ public class AdDisplayManager {
     private static final String TAG = "AdDisplayManager";
     private final Context context;
     private final DeviceInfo deviceInfo;
+    private final VideoPlayerProvider videoPlayerProvider;
 
     private WebView currentBanner = null;
     private IMAPlayerHandler currentVideoPlayer = null;
@@ -89,9 +92,10 @@ public class AdDisplayManager {
     private AdPosition currentAdPosition = AdPosition.UNKNOWN;
     private AdPosition responseAdPosition = AdPosition.UNKNOWN;
 
-    public AdDisplayManager(Context context, DeviceInfo deviceInfo) {
+    public AdDisplayManager(Context context, DeviceInfo deviceInfo, VideoPlayerProvider videoPlayerProvider) {
         this.context = context;
         this.deviceInfo = deviceInfo;
+        this.videoPlayerProvider = videoPlayerProvider;
     }
 
     // Try to resolve an Activity from the provided Context by unwrapping ContextWrappers.
@@ -178,7 +182,8 @@ public class AdDisplayManager {
     private String sanitizeAdm(String adm) {
         if (adm == null) return null;
 
-        String current = adm;
+        String current = AdmPayloadUtils.unwrapJsonAdmEnvelope(adm);
+        current = AdmPayloadUtils.decodeLiteralUnicodeEscapes(current);
         // Try up to a few iterations to peel nested document.write wrappers
         for (int iter = 0; iter < 5; iter++) {
             String trimmed = current.trim();
@@ -263,6 +268,10 @@ public class AdDisplayManager {
                 break;
             }
         }
+
+        current = AdmPayloadUtils.extractEmbeddedAdmJsonFromCreative(current);
+        current = AdmPayloadUtils.extractEmbeddedAdmJsonFromCreative(current);
+        current = AdmPayloadUtils.decodeLiteralUnicodeEscapes(current);
 
         return current;
     }
@@ -650,7 +659,7 @@ public class AdDisplayManager {
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT));
 
-                        IMAPlayerHandler videoPlayer = new IMAPlayerHandler(adm, vastRedirectUrl, context);
+                        IMAPlayerHandler videoPlayer = new IMAPlayerHandler(adm, vastRedirectUrl, context, videoPlayerProvider);
                         videoPlayer.setLayoutParams(new FrameLayout.LayoutParams(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT));
@@ -698,7 +707,7 @@ public class AdDisplayManager {
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT));
 
-                        IMAPlayerHandler videoPlayer = new IMAPlayerHandler(adm, vastRedirectUrl, context);
+                        IMAPlayerHandler videoPlayer = new IMAPlayerHandler(adm, vastRedirectUrl, context, videoPlayerProvider);
                         int heightPx = (int) TypedValue.applyDimension(
                                 TypedValue.COMPLEX_UNIT_DIP, 300, context.getResources().getDisplayMetrics());
                         videoPlayer.setLayoutParams(new FrameLayout.LayoutParams(
@@ -829,7 +838,7 @@ public class AdDisplayManager {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
 
-        IMAPlayerHandler videoPlayer = new IMAPlayerHandler(adm, vastRedirectUrl, context);
+        IMAPlayerHandler videoPlayer = new IMAPlayerHandler(adm, vastRedirectUrl, context, videoPlayerProvider);
         if (isFullScreen) {
             videoPlayer.setLayoutParams(new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1340,7 +1349,7 @@ public class AdDisplayManager {
                         VastParser.analyzeVast(adm);
                         String vastRedirectUrl = VastParser.getClickThroughUrl(adm);
 
-                        IMAPlayerHandler videoPlayer = new IMAPlayerHandler(adm, vastRedirectUrl, context);
+                        IMAPlayerHandler videoPlayer = new IMAPlayerHandler(adm, vastRedirectUrl, context, videoPlayerProvider);
                         int heightPx = (int) TypedValue.applyDimension(
                                 TypedValue.COMPLEX_UNIT_DIP, 300, context.getResources().getDisplayMetrics());
                         videoPlayer.setLayoutParams(new FrameLayout.LayoutParams(

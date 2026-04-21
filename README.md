@@ -29,10 +29,10 @@ repositories {
 
 dependencies {
     // Request the AAR artifact explicitly. Use this when the repository exposes the SDK as an AAR
-    implementation("com.bidscube:bidscube-sdk:1.2.2@aar")
+    implementation("com.bidscube:bidscube-sdk:1.2.3@aar")
 
     // If the artifact is published with proper AAR packaging Gradle will normally resolve it
-    // implementation("com.bidscube:bidscube-sdk:1.2.2")
+    // implementation("com.bidscube:bidscube-sdk:1.2.3")
 }
 ```
 
@@ -45,8 +45,8 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.bidscube:bidscube-sdk:1.2.2'
-    // or force AAR: implementation 'com.bidscube:bidscube-sdk:1.2.2@aar'
+    implementation 'com.bidscube:bidscube-sdk:1.2.3'
+    // or force AAR: implementation 'com.bidscube:bidscube-sdk:1.2.3@aar'
 }
 ```
 
@@ -546,9 +546,14 @@ This SDK is protected under the MIT License. For full license terms, please refe
 
 ## Version
 
-This README and examples are updated for Bidscube SDK version 1.2.2.
+This README and examples are updated for Bidscube SDK version 1.2.3.
 
-## What's new in 1.2.2 (user-facing)
+## What's new in 1.2.3 (user-facing)
+
+- Maven: published SDK POM uses `packaging=aar`; BOM lives under `bom/pom.xml` and declares `com.bidscube:bidscube-sdk` with `<type>aar</type>` for Maven consumers.
+- Optional `SDKConfig.Builder.videoPlayerProvider(VideoPlayerProvider)` supplies the `VideoView` used for IMA video ads (default remains a standard `VideoView`).
+
+## Changes from 1.2.2
 
 - Unified rendering hook: a single API `AdCallback.onAdRenderOverride(AdRenderContext)` lets hosts fully control rendering for ALL ad types (image/HTML ADM, video, native) — return true to take over rendering and skip the SDK default UI.
 - Native rendering compatibility: the SDK provides helpers so you can render OpenRTB-style native ads with either the provided banner layout or with your custom layout.

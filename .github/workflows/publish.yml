@@ -16,6 +16,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve BidscubeVersion for Gradle and staging
+        run: |
+          if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
+            VER="${GITHUB_REF_NAME#v}"
+          else
+            VER=$(grep -E '^bidscube.version=' gradle.properties | cut -d= -f2- | tr -d '\r')
+          fi
+          echo "BidscubeVersion=$VER" >> "$GITHUB_ENV"
+          echo "Resolved BidscubeVersion=$VER"
+
       - name: Load Maven credentials from gradle.properties (optional)
         id: load_maven_creds
         run: |
@@ -175,13 +185,15 @@ jobs:
           echo "PATH=$PATH"
           echo "Which sdkmanager: $(which sdkmanager || true)"
 
-      - name: Build AAR, sources and javadoc JARs (Gradle)
+      - name: Build AAR and validate Maven publication (Gradle)
+        env:
+          BidscubeVersion: ${{ env.BidscubeVersion }}
         run: |
           if [ -f "./gradlew" ]; then
-            ./gradlew clean :sdk:assembleRelease :sdk:sourcesJar :sdk:javadocJar --no-daemon --stacktrace
+            ./gradlew clean :sdk:validateReleasePublication --no-daemon --stacktrace
           else
             echo "gradlew not found; attempting to run gradle if available on PATH"
-            gradle clean :sdk:assembleRelease :sdk:sourcesJar :sdk:javadocJar --no-daemon --stacktrace
+            gradle clean :sdk:validateReleasePublication --no-daemon --stacktrace
           fi
 
       - name: Verify built artifacts
@@ -198,18 +210,21 @@ jobs:
             exit 1
           fi
 
-          if [ ! -f "sdk/build/libs/sdk-sources.jar" ] && [ ! -f "build/libs/sdk-sources.jar" ]; then
-            echo "Error: sources JAR not found"
+          SRC=$(find sdk/build/libs -maxdepth 1 -name '*sources*.jar' -print -quit 2>/dev/null || true)
+          if [ -z "$SRC" ]; then
+            echo "Error: no sources JAR under sdk/build/libs"
             ls -la sdk/build/libs || true
-            ls -la build/libs || true
             exit 1
           fi
-          if [ ! -f "sdk/build/libs/sdk-javadoc.jar" ] && [ ! -f "build/libs/sdk-javadoc.jar" ]; then
-            echo "Error: javadoc JAR not found"
+          echo "Found sources jar: $SRC"
+
+          DOC=$(find sdk/build/libs -maxdepth 1 -name '*javadoc*.jar' -print -quit 2>/dev/null || true)
+          if [ -z "$DOC" ]; then
+            echo "Error: no javadoc JAR under sdk/build/libs"
             ls -la sdk/build/libs || true
-            ls -la build/libs || true
             exit 1
           fi
+          echo "Found javadoc jar: $DOC"
 
       - name: Import GPG key (if provided)
         id: import_gpg
@@ -326,13 +341,35 @@ jobs:
           asset_name: sdk-${{ github.ref_name }}.aar
           asset_content_type: application/zip
 
-      - name: Deploy to Maven Central (mvn deploy)
+      - name: Publish SDK AAR to Maven Central (Gradle)
         env:
-          # allow mvn to see the passphrase if set in env
+          BidscubeVersion: ${{ env.BidscubeVersion }}
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME || steps.load_maven_creds.outputs.maven_user }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD || steps.load_maven_creds.outputs.maven_pass }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE || steps.load_maven_creds.outputs.signing_pass }}
         run: |
           set -e
-          echo "Deploying to Maven Central using mvn deploy"
+          FPR="${{ steps.import_gpg.outputs.fingerprint }}"
+          if [ -z "$FPR" ] || [ "$FPR" = "null" ]; then
+            echo "No GPG fingerprint; skipping Gradle publish"
+            exit 0
+          fi
+          if [ -z "$ORG_GRADLE_PROJECT_mavenCentralUsername" ] || [ -z "$ORG_GRADLE_PROJECT_mavenCentralPassword" ]; then
+            echo "No Maven Central credentials for Gradle; skipping Gradle publish"
+            exit 0
+          fi
+          if [ -f "./gradlew" ]; then
+            ./gradlew :sdk:publishReleasePublicationToCentralRepository --no-daemon --stacktrace
+          else
+            gradle :sdk:publishReleasePublicationToCentralRepository --no-daemon --stacktrace
+          fi
+
+      - name: Deploy BOM to Maven Central (mvn deploy)
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE || steps.load_maven_creds.outputs.signing_pass }}
+        run: |
+          set -e
+          echo "Deploying com.bidscube:bidscube-sdk-bom (POM-only BOM) using mvn deploy"
 
           sudo apt-get update -y
           sudo apt-get install -y gnupg2 pinentry-curses maven || true
@@ -341,17 +378,14 @@ jobs:
           echo "GNUPGHOME=$GNUPGHOME"
           echo "GNUPGHOME=$GNUPGHOME" >> $GITHUB_ENV
 
-          # Get fingerprint output from import step
           FPR="${{ steps.import_gpg.outputs.fingerprint }}"
           echo "Imported fingerprint from previous step: $FPR"
 
-          # If no imported key or passphrase provided, abort gracefully for local runs
           if [ -z "$FPR" ] || [ "$FPR" = "null" ]; then
             echo "No GPG fingerprint available from import step. Skipping mvn deploy to avoid gpg signing failure."
             exit 0
           fi
 
-          # Ensure passphrase is available either via environment or from keys/gpg_pass or gradle.properties
           if [ -z "$GPG_PASSPHRASE" ]; then
             if [ -f "keys/gpg_pass" ]; then
               echo "Reading GPG passphrase from keys/gpg_pass"
@@ -366,14 +400,10 @@ jobs:
             fi
           fi
 
-          # Configure gpg-agent for loopback pinentry
           echo "allow-loopback-pinentry" >> "$GNUPGHOME/gpg-agent.conf"
           gpgconf --kill gpg-agent || true
-
-          # Show imported keys
           gpg --list-secret-keys --keyid-format LONG || true
 
-          # If settings.xml exists in repo, copy it to $HOME/.m2; otherwise rely on setup-java created settings
           if [ -f "settings.xml" ]; then
             mkdir -p "$HOME/.m2"
             cp settings.xml "$HOME/.m2/settings.xml"
@@ -387,9 +417,8 @@ jobs:
             exit 1
           fi
 
-          # Run mvn deploy and pass the GPG passphrase and keyname to the maven-gpg-plugin
-          echo "Running mvn deploy (with gpg.passphrase and gpg.keyname)..."
-          mvn -B -s "$SETTINGS" -Prelease -DskipTests \
+          echo "Running mvn deploy for bidscube-sdk-bom (bom/pom.xml)..."
+          mvn -B -f bom/pom.xml -s "$SETTINGS" -Prelease -DskipTests \
             -Dgpg.passphrase="$GPG_PASSPHRASE" \
             -Dgpg.executable=$(which gpg) \
             -Dgpg.keyname="$FPR" deploy

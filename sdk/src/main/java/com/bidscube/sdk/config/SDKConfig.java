@@ -27,6 +27,9 @@ public class SDKConfig {
     private final String usPrivacy;
     private final Boolean coppa;
 
+    /** Optional; when null the SDK uses {@code new VideoView(context)} for IMA playback. */
+    private final VideoPlayerProvider videoPlayerProvider;
+
     private SDKConfig(Builder builder) {
         this.appId = builder.appId;
         this.appName = builder.appName;
@@ -41,6 +44,7 @@ public class SDKConfig {
         this.gdprConsent = builder.gdprConsent;
         this.usPrivacy = builder.usPrivacy;
         this.coppa = builder.coppa;
+        this.videoPlayerProvider = builder.videoPlayerProvider;
     }
 
     public String getAppId() {
@@ -96,10 +100,17 @@ public class SDKConfig {
     }
 
     /**
-     * Get the SDK version from environment variable or default to 1.0.1
+     * Custom {@link VideoView} factory for IMA video ads, or null for the built-in player.
+     */
+    public VideoPlayerProvider getVideoPlayerProvider() {
+        return videoPlayerProvider;
+    }
+
+    /**
+     * Get the SDK version from environment variable or default to 1.2.3
      */
     private static String getSDKVersion() {
-        return System.getenv().getOrDefault("BidscubeVersion", "1.0.1");
+        return System.getenv().getOrDefault("BidscubeVersion", "1.2.3");
     }
 
     /**
@@ -121,6 +132,8 @@ public class SDKConfig {
         private String gdprConsent = null;
         private String usPrivacy = null;
         private Boolean coppa = null;
+
+        private VideoPlayerProvider videoPlayerProvider = null;
 
         /**
          * Create a new Builder with automatic app detection
@@ -279,6 +292,15 @@ public class SDKConfig {
          */
         public Builder coppa(Boolean coppa) {
             this.coppa = coppa;
+            return this;
+        }
+
+        /**
+         * Supply a custom {@link VideoView} implementation for IMA video ads (e.g. subclass with app-specific
+         * buffering or analytics). When omitted, the SDK creates a standard {@link android.widget.VideoView}.
+         */
+        public Builder videoPlayerProvider(VideoPlayerProvider videoPlayerProvider) {
+            this.videoPlayerProvider = videoPlayerProvider;
             return this;
         }
 

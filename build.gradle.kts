@@ -6,6 +6,16 @@ plugins {
     id("com.android.library") version "8.9.1" apply false
 }
 
+val bidscubeVersion: String =
+    System.getenv("BidscubeVersion")
+        ?: (findProperty("bidscube.version") as String?)
+        ?: "1.2.3"
+
+subprojects {
+    group = "com.bidscube"
+    version = bidscubeVersion
+}
+
 allprojects {
     repositories {
         google()
@@ -13,4 +23,3 @@ allprojects {
         maven { url = uri("https://jitpack.io") }
     }
 }
-

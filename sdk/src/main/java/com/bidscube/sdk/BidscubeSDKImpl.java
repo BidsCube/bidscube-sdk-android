@@ -61,7 +61,7 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             deviceInfoProvider.getDeviceInfoAsync(deviceInfo -> {
                 this.deviceInfo = deviceInfo;
 
-                this.adDisplayManager = new AdDisplayManager(context, deviceInfo);
+                this.adDisplayManager = new AdDisplayManager(context, deviceInfo, config.getVideoPlayerProvider());
 
                 this.isInitialized = true;
                 SDKLogger.d(TAG, "SDK initialized successfully");

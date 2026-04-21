@@ -14,6 +14,7 @@ import android.widget.VideoView;
 
 import androidx.media3.common.util.UnstableApi;
 
+import com.bidscube.sdk.config.VideoPlayerProvider;
 import com.bidscube.sdk.adapters.VideoAdPlayerAdapter;
 import com.google.ads.interactivemedia.v3.api.AdDisplayContainer;
 import com.google.ads.interactivemedia.v3.api.AdsLoader;
@@ -47,24 +48,37 @@ public class IMAPlayerHandler extends FrameLayout {
     private OnVideoCompletionListener completionListener;
     private boolean isVideoPlaying = false;
 
+    private final VideoPlayerProvider videoPlayerProvider;
+
     public IMAPlayerHandler(String vastUrl, String redirectUrl, Context context) {
+        this(vastUrl, redirectUrl, context, null);
+    }
+
+    public IMAPlayerHandler(String vastUrl, String redirectUrl, Context context, VideoPlayerProvider videoPlayerProvider) {
         super(context);
         this.vastUrl = vastUrl;
         this.redirectUrl = redirectUrl;
+        this.videoPlayerProvider = videoPlayerProvider;
         init(vastUrl, redirectUrl, context);
     }
 
     public IMAPlayerHandler(String vastUrl, String redirectUrl, Context context, AttributeSet attrs) {
+        this(vastUrl, redirectUrl, context, attrs, null);
+    }
+
+    public IMAPlayerHandler(String vastUrl, String redirectUrl, Context context, AttributeSet attrs,
+            VideoPlayerProvider videoPlayerProvider) {
         super(context, attrs);
         this.vastUrl = vastUrl;
         this.redirectUrl = redirectUrl;
+        this.videoPlayerProvider = videoPlayerProvider;
         init(vastUrl, redirectUrl, context);
     }
 
     private void init(String vastUrl, String redirectUrl, Context context) {
 
         AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-        videoView = new VideoView(context);
+        videoView = videoPlayerProvider != null ? videoPlayerProvider.createVideoView(context) : new VideoView(context);
 
         FrameLayout.LayoutParams videoParams = new FrameLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT,

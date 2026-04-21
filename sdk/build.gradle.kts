@@ -1,5 +1,3 @@
-import org.gradle.api.tasks.bundling.Jar
-
 plugins {
     id("com.android.library")
     kotlin("android")
@@ -49,20 +47,14 @@ dependencies {
     compileOnly("com.android.tools:desugar_jdk_libs:2.0.4")
     implementation("com.google.android.ump:user-messaging-platform:2.2.0")
     implementation("com.google.android.gms:play-services-ads-identifier:18.0.1")
-    implementation("com.google.ads.interactivemedia.v3:interactivemedia:3.33.0")
+    implementation("com.google.ads.interactivemedia.v3:interactivemedia:3.37.0")
     implementation("androidx.cardview:cardview:1.0.0")
     implementation("com.google.android.material:material:1.12.0")
-    // Image loading
     implementation("com.github.bumptech.glide:glide:4.15.1")
 }
 
-val sourcesJar by tasks.registering(Jar::class) {
-    archiveClassifier.set("sources")
-    from(android.sourceSets["main"].java.srcDirs)
-}
-
-val javadocJar by tasks.registering(Jar::class) {
-    archiveClassifier.set("javadoc")
+signing {
+    useGpgCmd()
 }
 
 afterEvaluate {
@@ -71,24 +63,18 @@ afterEvaluate {
             create<MavenPublication>("release") {
                 groupId = "com.bidscube"
                 artifactId = "bidscube-sdk"
-                version = System.getenv("BidscubeVersion") ?: "1.2.2"
-
-//                artifact(layout.buildDirectory.file("outputs/aar/sdk-release.aar")) {
-//                    extension = "aar"
-//                }
-
-                artifact("$buildDir/outputs/aar/sdk-release.aar") {
-                    extension = "aar"
-                }
-
-                artifact(tasks.named("sourcesJar"))
-                artifact(tasks.named("javadocJar"))
+                version = project.version.toString()
 
                 from(components["release"])
 
                 pom {
+                    packaging.set("aar")
                     name.set("Bidscube SDK")
-                    description.set("The official Bidscube SDK for Android advertising platform")
+                    description.set(
+                        "The official Bidscube SDK for Android. " +
+                            "Apps must enable core library desugaring when using this artifact " +
+                            "(required by Google IMA / AndroidX Media3 integration paths; see AndroidX release notes for interactivemedia)."
+                    )
                     url.set("https://github.com/BidsCube/bidscube-sdk")
 
                     licenses {
@@ -128,13 +114,7 @@ afterEvaluate {
             }
         }
     }
-}
-signing {
-    useGpgCmd()
-}
 
-
-afterEvaluate {
     val releasePub = publishing.publications.findByName("release")
     if (releasePub != null) {
         signing.sign(releasePub)
@@ -143,83 +123,38 @@ afterEvaluate {
             signing.sign(it)
         }
     }
-}
 
-// Validation task: ensure the release publication contains expected artifacts before publish
-afterEvaluate {
     val validateReleasePublication by tasks.registering {
         dependsOn("assembleRelease")
-        // ensure our source/javadoc jar tasks run
-        dependsOn(tasks.named("sourcesJar"))
-        dependsOn(tasks.named("javadocJar"))
+        dependsOn(tasks.named("generatePomFileForReleasePublication"))
         doLast {
             val pub = publishing.publications.findByName("release") as? MavenPublication
                 ?: throw GradleException("No 'release' publication found")
 
-            val missing = mutableListOf<String>()
-
-            // Check presence of an AAR artifact in the publication
-            // Prefer the AAR produced under build/outputs/aar
-            val aarCandidate = file("$buildDir/outputs/aar/sdk-release.aar").takeIf { it.exists() }
-                ?: fileTree("$buildDir/outputs/aar").matching { include("*.aar") }.files.firstOrNull()
-
-            if (aarCandidate == null) {
-                missing += "AAR not found in build/outputs/aar (expected sdk-release.aar or any .aar there)"
-            } else {
-                println("Found AAR to publish: ${aarCandidate.absolutePath}")
+            val aarArtifacts = pub.artifacts.filter { it.extension == "aar" }
+            if (aarArtifacts.size != 1) {
+                throw GradleException(
+                    "Publication must contain exactly one AAR (Android library), found ${aarArtifacts.size}. " +
+                        "Artifacts: " + pub.artifacts.joinToString { "${it.classifier ?: "main"}:${it.extension}" }
+                )
             }
 
-            // Locate jars in build/libs (main jar, sources and javadoc) — this is where Gradle places published jars
-            val libsDir = file("$buildDir/libs")
-            val mainJar = libsDir.listFiles()?.firstOrNull { it.extension == "jar" && !it.name.contains("sources") && !it.name.contains("javadoc") }
-            val sourcesJarFileFromLibs = libsDir.listFiles()?.firstOrNull { it.name.contains("sources") && it.extension == "jar" }
-            val javadocJarFileFromLibs = libsDir.listFiles()?.firstOrNull { it.name.contains("javadoc") && it.extension == "jar" }
-
-            if (sourcesJarFileFromLibs == null) {
-                missing += "sources JAR not found under $buildDir/libs (looked for *sources*.jar)"
-            } else {
-                println("Found sources jar: ${sourcesJarFileFromLibs.absolutePath}")
-            }
-            if (javadocJarFileFromLibs == null) {
-                missing += "javadoc JAR not found under $buildDir/libs (looked for *javadoc*.jar)"
-            } else {
-                println("Found javadoc jar: ${javadocJarFileFromLibs.absolutePath}")
+            val aarFile = aarArtifacts.single().file
+            if (aarFile == null || !aarFile.exists()) {
+                throw GradleException("Published AAR file is missing: ${aarFile?.path}")
             }
 
-            // Also accept previously-found AGP outputs (fallback) — we've done earlier fallbacks; if they exist, good.
-
-            // If the publication references artifact files explicitly, warn only if both the publication file is missing and the corresponding built artifact is missing
-            pub.artifacts.forEach { art ->
-                val f = art.file
-                val cls = art.classifier ?: "<no classifier>"
-                val ext = art.extension ?: "<no ext>"
-                if (f != null && f.exists()) {
-                    println("Publication artifact exists: classifier=$cls ext=$ext file=${f.absolutePath}")
-                } else {
-                    // map classifier/ext to expected built output
-                    val expected = when (cls) {
-                        "sources" -> sourcesJarFileFromLibs
-                        "javadoc" -> javadocJarFileFromLibs
-                        else -> aarCandidate ?: mainJar
-                    }
-                    if (expected == null || !expected.exists()) {
-                        val filePath = f?.path ?: "<publication-file-missing>"
-                        missing += "publication artifact missing: classifier=$cls ext=$ext file=$filePath"
-                    } else {
-                        println("Publication artifact ${cls}/${ext} resolved to built output: ${expected.absolutePath}")
-                    }
-                }
+            val jars = pub.artifacts.filter { it.extension == "jar" }
+            val classifiers = jars.mapNotNull { it.classifier }.toSet()
+            if ("sources" !in classifiers) {
+                throw GradleException("Publication must include a sources classifier jar; have: $classifiers")
             }
-
-            if (missing.isNotEmpty()) {
-                throw GradleException("Publication validation failed:\n\t" + missing.joinToString("\n\t"))
+            if ("javadoc" !in classifiers) {
+                throw GradleException("Publication must include a javadoc classifier jar; have: $classifiers")
             }
-
-            println("Publication 'release' validated: all artifacts present.")
         }
     }
 
-    // Make publish tasks depend on validation
     tasks.matching { it.name.startsWith("publish", ignoreCase = true) }.configureEach {
         dependsOn(validateReleasePublication)
     }

@@ -12,6 +12,7 @@ import android.webkit.WebViewClient;
 import android.webkit.WebChromeClient;
 import android.view.ViewGroup;
 import android.view.MotionEvent;
+import com.bidscube.sdk.utils.AdmPayloadUtils;
 import com.bidscube.sdk.utils.SDKLogger;
 
 public class BannerViewFactory {
@@ -204,6 +205,9 @@ public class BannerViewFactory {
         webView.post(() -> {
              // Preprocess adHtml: if it contains a document.write(...) wrapper, try to extract inner HTML
              String content = adHtml != null ? adHtml : "";
+            content = AdmPayloadUtils.unwrapJsonAdmEnvelope(content);
+            content = AdmPayloadUtils.decodeLiteralUnicodeEscapes(content);
+            content = AdmPayloadUtils.extractEmbeddedAdmJsonFromCreative(content);
             SDKLogger.d("BannerViewFactory", "createBanner called, admLen=" + (adHtml != null ? adHtml.length() : 0));
 
             String lower = content.toLowerCase();
@@ -507,6 +511,9 @@ public class BannerViewFactory {
         webView.post(() -> {
              // Preprocess adHtml: if it contains a document.write(...) wrapper, try to extract inner HTML
              String content = adHtml != null ? adHtml : "";
+            content = AdmPayloadUtils.unwrapJsonAdmEnvelope(content);
+            content = AdmPayloadUtils.decodeLiteralUnicodeEscapes(content);
+            content = AdmPayloadUtils.extractEmbeddedAdmJsonFromCreative(content);
             SDKLogger.d("BannerViewFactory", "createBanner called, admLen=" + (adHtml != null ? adHtml.length() : 0));
 
             String lower = content.toLowerCase();

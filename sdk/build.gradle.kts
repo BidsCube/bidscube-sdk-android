@@ -68,7 +68,6 @@ afterEvaluate {
                 from(components["release"])
 
                 pom {
-                    packaging.set("aar")
                     name.set("Bidscube SDK")
                     description.set(
                         "The official Bidscube SDK for Android. " +

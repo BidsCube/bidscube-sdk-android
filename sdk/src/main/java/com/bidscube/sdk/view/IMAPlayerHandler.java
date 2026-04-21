@@ -51,7 +51,7 @@ public class IMAPlayerHandler extends FrameLayout {
     private final VideoPlayerProvider videoPlayerProvider;
 
     public IMAPlayerHandler(String vastUrl, String redirectUrl, Context context) {
-        this(vastUrl, redirectUrl, context, null);
+        this(vastUrl, redirectUrl, context, (VideoPlayerProvider) null);
     }
 
     public IMAPlayerHandler(String vastUrl, String redirectUrl, Context context, VideoPlayerProvider videoPlayerProvider) {

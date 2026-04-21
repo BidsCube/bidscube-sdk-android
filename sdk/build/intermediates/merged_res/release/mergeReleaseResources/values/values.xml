@@ -2305,7 +2305,6 @@
   </string>
     <string name="error_icon_content_description">Error</string>
     <string name="error_message_description_text">There was an issue getting more details about this ad</string>
-    <string name="error_message_text">Something went wrong</string>
     <string name="exo_controls_cc_disabled_description">Enable subtitles</string>
     <string name="exo_controls_cc_enabled_description">Disable subtitles</string>
     <string name="exo_controls_custom_playback_speed" translatable="false"><ns2:g example="1.05" id="playback_speed">%1$.2f</ns2:g>x</string>
@@ -2485,6 +2484,7 @@
     <string name="side_sheet_behavior" translatable="false">com.google.android.material.sidesheet.SideSheetBehavior</string>
     <string name="status_bar_notification_info_overflow">999+</string>
     <string name="summary_collapsed_preference_list"><ns2:g id="current_items">%1$s</ns2:g>, <ns2:g id="added_items">%2$s</ns2:g></string>
+    <string name="tv_ads_error_message_text">Something went wrong</string>
     <string name="v7_preference_off">OFF</string>
     <string name="v7_preference_on">ON</string>
     <style name="AlertDialog.AppCompat" parent="Base.AlertDialog.AppCompat"/>

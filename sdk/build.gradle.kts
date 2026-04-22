@@ -4,6 +4,13 @@ plugins {
     id("maven-publish")
 }
 
+// When :sdk is included from the publisher test app, root gradle.properties may differ;
+// keep version in sync via -Pbidscube.version=… or env BidscubeVersion.
+version =
+    (findProperty("bidscube.version") as String?)
+        ?: System.getenv("BidscubeVersion")
+        ?: "1.2.3"
+
 android {
     namespace = "com.bidscube.sdk"
     compileSdk = 36

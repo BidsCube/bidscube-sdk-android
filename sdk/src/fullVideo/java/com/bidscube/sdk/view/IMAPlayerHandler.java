@@ -7,6 +7,7 @@ import android.util.AttributeSet;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import com.bidscube.sdk.utils.SDKLogger;
 import android.widget.Button;
 import android.widget.FrameLayout;
@@ -26,16 +27,7 @@ import com.google.ads.interactivemedia.v3.api.player.VideoAdPlayer;
 
 @SuppressLint("ViewConstructor")
 @UnstableApi
-public class IMAPlayerHandler extends FrameLayout {
-
-    /**
-     * Interface for video completion callbacks
-     */
-    public interface OnVideoCompletionListener {
-        void onVideoCompleted();
-
-        void onVideoSkipped();
-    }
+public class IMAPlayerHandler extends FrameLayout implements BidscubeVideoAdPlayer {
 
     private ImaSdkFactory sdkFactory;
     private AdsLoader adsLoader;
@@ -45,7 +37,7 @@ public class IMAPlayerHandler extends FrameLayout {
     private final String eventsTag = "IMAevent";
     private final String vastUrl;
     private final String redirectUrl;
-    private OnVideoCompletionListener completionListener;
+    private BidscubeVideoAdPlayer.VideoCompletionListener completionListener;
     private boolean isVideoPlaying = false;
 
     private final VideoPlayerProvider videoPlayerProvider;
@@ -149,6 +141,7 @@ public class IMAPlayerHandler extends FrameLayout {
         }
     }
 
+    @Override
     public void playVast(String vastTag, boolean isUrl) {
         AdsRequest request = sdkFactory.createAdsRequest();
 
@@ -224,6 +217,7 @@ public class IMAPlayerHandler extends FrameLayout {
     /**
      * Skips the current video ad
      */
+    @Override
     public void skipVideo() {
         if (adsManager != null && isVideoPlaying) {
             try {
@@ -267,10 +261,17 @@ public class IMAPlayerHandler extends FrameLayout {
      *
      * @param listener The listener to be called when video completes
      */
-    public void setOnVideoCompletionListener(OnVideoCompletionListener listener) {
+    @Override
+    public void setOnVideoCompletionListener(BidscubeVideoAdPlayer.VideoCompletionListener listener) {
         this.completionListener = listener;
     }
 
+    @Override
+    public ViewGroup asViewGroup() {
+        return this;
+    }
+
+    @Override
     public void release() {
         if (adsManager != null) {
             adsManager.destroy();

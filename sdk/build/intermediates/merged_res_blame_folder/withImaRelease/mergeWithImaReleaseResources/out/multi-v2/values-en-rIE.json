@@ -1,0 +1,48 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.bidscube.sdk-withImaRelease-39:/values-en-rIE/values-en-rIE.xml",
+            "map": [
+                {
+                    "source": "/Users/catchman/.gradle/caches/8.12/transforms/3396b0e92deb722f8c4986d43bf86078/transformed/tv-ads-1.0.1/res/values-en-rIE/values.xml",
+                    "from": {
+                        "startLines": "4,5,8,11",
+                        "startColumns": "0,0,0,0",
+                        "startOffsets": "201,248,528,733",
+                        "endColumns": "46,108,70,70",
+                        "endOffsets": "247,356,598,803"
+                    },
+                    "to": {
+                        "startLines": "2,3,4,5",
+                        "startColumns": "4,4,4,4",
+                        "startOffsets": "55,106,219,294",
+                        "endColumns": "50,112,74,74",
+                        "endOffsets": "101,214,289,364"
+                    }
+                }
+            ]
+        },
+        {
+            "outputFile": "com.bidscube.sdk-mergeWithImaReleaseResources-37:/values-en-rIE/values-en-rIE.xml",
+            "map": [
+                {
+                    "source": "/Users/catchman/.gradle/caches/8.12/transforms/3396b0e92deb722f8c4986d43bf86078/transformed/tv-ads-1.0.1/res/values-en-rIE/values.xml",
+                    "from": {
+                        "startLines": "4,5,8,11",
+                        "startColumns": "0,0,0,0",
+                        "startOffsets": "201,248,528,733",
+                        "endColumns": "46,108,70,70",
+                        "endOffsets": "247,356,598,803"
+                    },
+                    "to": {
+                        "startLines": "2,3,4,5",
+                        "startColumns": "4,4,4,4",
+                        "startOffsets": "55,106,219,294",
+                        "endColumns": "50,112,74,74",
+                        "endOffsets": "101,214,289,364"
+                    }
+                }
+            ]
+        }
+    ]
+}

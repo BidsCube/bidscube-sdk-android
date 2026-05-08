@@ -15,6 +15,8 @@ import android.widget.TextView;
 
 import com.bidscube.sdk.models.natives.NativeAd;
 import com.bidscube.sdk.models.natives.NativeAsset;
+import com.bidscube.sdk.models.natives.NativeLink;
+import com.bidscube.sdk.network.TrackerPinger;
 import com.bidscube.sdk.models.enums.NativeDataType;
 import com.bidscube.sdk.models.enums.ImageType;
 import com.bumptech.glide.Glide;
@@ -196,14 +198,12 @@ public final class NativeAdBinder {
         bindToImageView(ctx, iconView, iconUrl, null);
         bindToImageView(ctx, mainImageView, mainUrl, null);
 
-        // If a click URL exists, attach it to the most prominent view(s)
-        if (nativeAd.link != null && nativeAd.link.url != null) {
-            final String clickUrl = nativeAd.link.url;
-            attachClickHandler(titleView, clickUrl, ctx);
-            attachClickHandler(bodyView, clickUrl, ctx);
-            attachClickHandler(ctaView, clickUrl, ctx);
-            attachClickHandler(iconView, clickUrl, ctx);
-            attachClickHandler(mainImageView, clickUrl, ctx);
+        if (nativeAd.link != null && linkHasClickAction(nativeAd.link)) {
+            attachClickHandler(titleView, nativeAd.link, ctx);
+            attachClickHandler(bodyView, nativeAd.link, ctx);
+            attachClickHandler(ctaView, nativeAd.link, ctx);
+            attachClickHandler(iconView, nativeAd.link, ctx);
+            attachClickHandler(mainImageView, nativeAd.link, ctx);
         }
     }
 
@@ -245,15 +245,31 @@ public final class NativeAdBinder {
         bind(nativeAd, ctx, title, body, cta, icon, main);
     }
 
-    private static void attachClickHandler(final View v, final String url, final Context ctx) {
-        if (v == null || url == null || url.isEmpty() || ctx == null) return;
+    private static boolean linkHasClickAction(NativeLink link) {
+        if (link == null) {
+            return false;
+        }
+        boolean hasUrl = link.url != null && !link.url.trim().isEmpty();
+        boolean hasClickTrackers = link.clicktrackers != null && !link.clicktrackers.isEmpty();
+        return hasUrl || hasClickTrackers;
+    }
+
+    private static void attachClickHandler(final View v, final NativeLink link, final Context ctx) {
+        if (v == null || ctx == null || !linkHasClickAction(link)) {
+            return;
+        }
         v.setClickable(true);
         v.setOnClickListener(view -> {
-            try {
-                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                ctx.startActivity(i);
-            } catch (Exception ignored) {
+            if (link.clicktrackers != null && !link.clicktrackers.isEmpty()) {
+                TrackerPinger.pingUrls("native.clicktrackers", link.clicktrackers);
+            }
+            if (link.url != null && !link.url.trim().isEmpty()) {
+                try {
+                    Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(link.url.trim()));
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    ctx.startActivity(i);
+                } catch (Exception ignored) {
+                }
             }
         });
     }
@@ -343,6 +359,11 @@ public final class NativeAdBinder {
         }
         if (mainUrl == null) mainUrl = firstImgUrl;
 
+        boolean imageOnlyNative = mainUrl != null
+                && (titleText == null || titleText.isEmpty())
+                && (bodyText == null || bodyText.isEmpty())
+                && (ctaText == null || ctaText.isEmpty());
+
         // Root container: use explicit widthPx/heightPx (previous behavior) so the banner has the intended size
         FrameLayout root = new FrameLayout(ctx);
         FrameLayout.LayoutParams rootLp = new FrameLayout.LayoutParams(widthPx, heightPx);
@@ -366,29 +387,33 @@ public final class NativeAdBinder {
         } catch (Exception ignored) {
         }
         try {
-            mainIv.setBackgroundColor(backgroundColor);
+            mainIv.setBackgroundColor(Color.TRANSPARENT);
         } catch (Exception ignored) {
         }
 
-        // Decide whether to load the main creative.
-        // Requirement: if native ad is NOT full screen, ignore big main images — only show title/subtitle and a small icon.
-        float densityLocal = ctx.getResources().getDisplayMetrics().density;
-        int thresholdPx = (int) (200 * densityLocal + 0.5f);
+        // HEADER/FOOTER/SIDEBAR: compact chrome — icon + text only.
+        // FULL_SCREEN and UNKNOWN: load main creative whenever the host gave a positive height (Glide override caps decode size).
         boolean mainLoaded = false;
         if (mainUrl != null) {
-            // Only load the full main image when position is FULL_SCREEN and height is sufficiently large.
-            if (position == com.bidscube.sdk.models.enums.AdPosition.FULL_SCREEN && heightPx > 0 && heightPx >= thresholdPx) {
-                // request a resized bitmap matching the banner dimensions to avoid large memory/scale issues
+            boolean allowMainByPosition =
+                    position == com.bidscube.sdk.models.enums.AdPosition.FULL_SCREEN
+                            || position == com.bidscube.sdk.models.enums.AdPosition.UNKNOWN;
+            if (allowMainByPosition && heightPx > 0) {
                 loadImageIntoView(ctx, mainIv, mainUrl, null, widthPx > 0 ? widthPx : null, heightPx, mainImageScaleType != null ? mainImageScaleType : ImageView.ScaleType.CENTER_CROP);
                 root.addView(mainIv);
                 mainLoaded = true;
-            } else {
-                // Non-fullscreen: do not load large main creative; rely on icon + text
-                mainLoaded = false;
             }
         }
 
-        // Overlay: icon | (title + body) | CTA
+        // Overlay: icon | (title + body) | CTA — skip for image-only HTML/OpenRTB creatives so the photo fills the banner.
+        if (imageOnlyNative && mainLoaded) {
+            if (nativeAd.link != null && linkHasClickAction(nativeAd.link)) {
+                attachClickHandler(root, nativeAd.link, ctx);
+            }
+            appendNativeAdDisclosure(ctx, root, backgroundColor, showAdDisclosure);
+            return root;
+        }
+
         LinearLayout overlay = new LinearLayout(ctx);
         // Overlay gravity should respect the requested AdPosition (header/footer/sidebar).
         // For non-fullscreen header/footer we want overlay anchored to top/bottom respectively so content is visible.
@@ -504,41 +529,46 @@ public final class NativeAdBinder {
         overlay.addView(ctaTv);
         root.addView(overlay);
 
-        // Attach click
-        if (nativeAd.link != null && nativeAd.link.url != null)
-            attachClickHandler(root, nativeAd.link.url, ctx);
-
-        // Disclosure
-        if (showAdDisclosure) {
-            try {
-                int size = (int) (24 * density + 0.5f);
-                int margin = (int) (8 * density + 0.5f);
-                ImageView disclosureIv = new ImageView(ctx);
-                disclosureIv.setImageResource(android.R.drawable.ic_dialog_info);
-                int r = (backgroundColor >> 16) & 0xff;
-                int g = (backgroundColor >> 8) & 0xff;
-                int b = backgroundColor & 0xff;
-                double luminance = (0.299 * r + 0.587 * g + 0.114 * b);
-                int tint = luminance > 186 ? Color.BLACK : Color.WHITE;
-                try {
-                    disclosureIv.setColorFilter(tint);
-                } catch (Exception ignored) {
-                }
-                FrameLayout.LayoutParams discLp = new FrameLayout.LayoutParams(size, size, Gravity.TOP | Gravity.END);
-                discLp.setMargins(margin, margin, margin, margin);
-                disclosureIv.setLayoutParams(discLp);
-                disclosureIv.setPadding(4, 4, 4, 4);
-                disclosureIv.setContentDescription("Ad");
-                try {
-                    disclosureIv.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
-                } catch (Exception ignored) {
-                }
-                root.addView(disclosureIv);
-            } catch (Exception ignored) {
-            }
+        if (nativeAd.link != null && linkHasClickAction(nativeAd.link)) {
+            attachClickHandler(root, nativeAd.link, ctx);
         }
 
+        appendNativeAdDisclosure(ctx, root, backgroundColor, showAdDisclosure);
+
         return root;
+    }
+
+    private static void appendNativeAdDisclosure(Context ctx, FrameLayout root, int backgroundColor, boolean showAdDisclosure) {
+        if (!showAdDisclosure || ctx == null || root == null) {
+            return;
+        }
+        try {
+            float density = ctx.getResources().getDisplayMetrics().density;
+            int size = (int) (24 * density + 0.5f);
+            int margin = (int) (8 * density + 0.5f);
+            ImageView disclosureIv = new ImageView(ctx);
+            disclosureIv.setImageResource(android.R.drawable.ic_dialog_info);
+            int r = (backgroundColor >> 16) & 0xff;
+            int g = (backgroundColor >> 8) & 0xff;
+            int b = backgroundColor & 0xff;
+            double luminance = (0.299 * r + 0.587 * g + 0.114 * b);
+            int tint = luminance > 186 ? Color.BLACK : Color.WHITE;
+            try {
+                disclosureIv.setColorFilter(tint);
+            } catch (Exception ignored) {
+            }
+            FrameLayout.LayoutParams discLp = new FrameLayout.LayoutParams(size, size, Gravity.TOP | Gravity.END);
+            discLp.setMargins(margin, margin, margin, margin);
+            disclosureIv.setLayoutParams(discLp);
+            disclosureIv.setPadding(4, 4, 4, 4);
+            disclosureIv.setContentDescription("Ad");
+            try {
+                disclosureIv.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+            } catch (Exception ignored) {
+            }
+            root.addView(disclosureIv);
+        } catch (Exception ignored) {
+        }
     }
 
     /**

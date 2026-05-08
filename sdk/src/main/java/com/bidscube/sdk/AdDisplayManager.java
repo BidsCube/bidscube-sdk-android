@@ -3,9 +3,7 @@ package com.bidscube.sdk;
 import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
-import android.content.Intent;
 import android.graphics.Color;
-import android.net.Uri;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -16,12 +14,8 @@ import android.view.WindowManager;
 import android.webkit.WebView;
 import android.widget.Button;
 import android.widget.FrameLayout;
-import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.VideoView;
-
-import androidx.media3.common.util.UnstableApi;
 
 import com.bidscube.sdk.ads.AdType;
 import com.bidscube.sdk.ads.VideoAdType;
@@ -36,22 +30,12 @@ import com.bidscube.sdk.network.BidscubeCallback;
 import com.bidscube.sdk.network.BidscubeResponse;
 import com.bidscube.sdk.network.NativeAdParser;
 import com.bidscube.sdk.utils.AdmPayloadUtils;
-import com.bidscube.sdk.utils.VastParser;
 import com.bidscube.sdk.config.VideoPlayerProvider;
 import com.bidscube.sdk.utils.SDKLogger;
 import com.bidscube.sdk.view.BannerViewFactory;
-import com.bidscube.sdk.view.IMAPlayerHandler;
 import com.bidscube.sdk.view.NativeAdView;
 import com.bidscube.sdk.view.NativeAdBinder;
-import com.bumptech.glide.Glide;
-import com.google.android.material.imageview.ShapeableImageView;
-import com.google.android.material.shape.CornerFamily;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.lang.reflect.Field;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
@@ -75,16 +59,23 @@ import java.util.regex.Pattern;
  * - Video Ads: showVideoAdWindowedInternal()
  * - Native Ads: showNativeAdWindowed()
  */
-@UnstableApi
 public class AdDisplayManager {
 
     private static final String TAG = "AdDisplayManager";
-    private final Context context;
-    private final DeviceInfo deviceInfo;
-    private final VideoPlayerProvider videoPlayerProvider;
+
+    private static final int ERROR_VIDEO_ADS_DISABLED = -2;
+
+    private static final String MSG_VIDEO_ADS_DISABLED =
+            "Video ads are disabled in SDKConfig (videoAdsEnabled=false). "
+                    + "Use SDKConfig.Builder.videoAdsEnabled(true) to enable VAST/IMA playback.";
+
+    final Context context;
+    final DeviceInfo deviceInfo;
+    final VideoPlayerProvider videoPlayerProvider;
+    private final boolean videoAdsEnabled;
 
     private WebView currentBanner = null;
-    private IMAPlayerHandler currentVideoPlayer = null;
+    VastAdPlayer currentVideoPlayer = null;
     private NativeAdView currentNativeAd = null;
 
     private FrameLayout overlayContainer;
@@ -92,10 +83,15 @@ public class AdDisplayManager {
     private AdPosition currentAdPosition = AdPosition.UNKNOWN;
     private AdPosition responseAdPosition = AdPosition.UNKNOWN;
 
-    public AdDisplayManager(Context context, DeviceInfo deviceInfo, VideoPlayerProvider videoPlayerProvider) {
+    public AdDisplayManager(
+            Context context,
+            DeviceInfo deviceInfo,
+            VideoPlayerProvider videoPlayerProvider,
+            boolean videoAdsEnabled) {
         this.context = context;
         this.deviceInfo = deviceInfo;
         this.videoPlayerProvider = videoPlayerProvider;
+        this.videoAdsEnabled = videoAdsEnabled;
     }
 
     // Try to resolve an Activity from the provided Context by unwrapping ContextWrappers.
@@ -155,7 +151,7 @@ public class AdDisplayManager {
     /**
      * Allows host app to intercept rendering if their callback opts-in.
      */
-    private boolean handleRenderOverride(String placementId,
+    boolean handleRenderOverride(String placementId,
                                          String adm,
                                          AdPosition position,
                                          AdType.Type renderType,
@@ -166,10 +162,22 @@ public class AdDisplayManager {
         try {
             // sanitize ADM before passing to the host app so wrappers like document.write(...) are removed
             String cleanAdm = sanitizeAdm(adm);
-            AdRenderContext context = new AdRenderContext(placementId, cleanAdm, position, renderType);
+            // IMAGE creatives often rely on in-markup JS (click beacons, dynamic t=check pixels). Hosts that
+            // override rendering typically use WebView for IMAGE; skip typed NativeAd so adm stays full HTML.
+            NativeAd parsedNative =
+                    renderType == AdType.Type.IMAGE
+                            ? null
+                            : NativeAdParser.parseFromAdm(cleanAdm);
+            AdRenderContext context =
+                    new AdRenderContext(placementId, cleanAdm, position, renderType, parsedNative);
             boolean handled = callback.onAdRenderOverride(context);
             if (handled) {
                 SDKLogger.d(TAG, "Render override accepted for placement " + placementId + " (" + renderType + ")");
+                if (parsedNative != null) {
+                    com.bidscube.sdk.network.NativeImpressionTracker.fireIfNeeded(
+                            parsedNative,
+                            "host_render_override_" + renderType.name().toLowerCase(java.util.Locale.US));
+                }
             }
             return handled;
         } catch (Exception e) {
@@ -179,7 +187,7 @@ public class AdDisplayManager {
     }
 
     // Helper to remove common JS wrappers around ADM responses, e.g. document.write('...');
-    private String sanitizeAdm(String adm) {
+    String sanitizeAdm(String adm) {
         if (adm == null) return null;
 
         String current = AdmPayloadUtils.unwrapJsonAdmEnvelope(adm);
@@ -273,6 +281,9 @@ public class AdDisplayManager {
         current = AdmPayloadUtils.extractEmbeddedAdmJsonFromCreative(current);
         current = AdmPayloadUtils.decodeLiteralUnicodeEscapes(current);
 
+        current = AdmPayloadUtils.stripInterTagJsonTextJunk(current);
+        current = AdmPayloadUtils.stripTrailingJsonCloseAfterHtml(current);
+
         return current;
     }
 
@@ -335,7 +346,7 @@ public class AdDisplayManager {
     /**
      * Centers a full screen dialog content
      */
-    private void centerFullScreenDialog(Dialog dialog, LinearLayout container) {
+    void centerFullScreenDialog(Dialog dialog, LinearLayout container) {
 
         container.setGravity(Gravity.CENTER);
 
@@ -350,7 +361,7 @@ public class AdDisplayManager {
     /**
      * Centers a full screen dialog content (FrameLayout version)
      */
-    private void centerFullScreenDialog(Dialog dialog, FrameLayout container) {
+    void centerFullScreenDialog(Dialog dialog, FrameLayout container) {
 
         Window window = dialog.getWindow();
         if (window != null) {
@@ -361,36 +372,9 @@ public class AdDisplayManager {
     }
 
     /**
-     * Configures video player for full screen display
-     */
-    private void configureVideoPlayerForFullScreen(IMAPlayerHandler videoPlayer) {
-        try {
-
-            Field videoViewField = videoPlayer.getClass().getDeclaredField("videoView");
-            videoViewField.setAccessible(true);
-            VideoView videoView = (VideoView) videoViewField.get(videoPlayer);
-            if (videoView != null) {
-
-                videoView.setScaleX(1.0f);
-                videoView.setScaleY(1.0f);
-
-                FrameLayout.LayoutParams videoParams = new FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT);
-                videoParams.gravity = Gravity.CENTER;
-                videoView.setLayoutParams(videoParams);
-
-                SDKLogger.d(TAG, "Video player configured for full screen display");
-            }
-        } catch (Exception e) {
-            SDKLogger.d(TAG, "Could not configure video player scaling: " + e.getMessage());
-        }
-    }
-
-    /**
      * Gets the display name for the current position
      */
-    private String getPositionDisplayName() {
+    String getPositionDisplayName() {
         AdPosition effectivePosition = getEffectiveAdPosition();
         switch (effectivePosition) {
             case ABOVE_THE_FOLD:
@@ -627,130 +611,17 @@ public class AdDisplayManager {
      * This method respects the position value from the ad response
      */
     void showVideoAdWithResponsePosition(String placementId, String url, AdCallback callback) {
+        if (!videoAdsEnabled) {
+            SDKLogger.w(TAG, MSG_VIDEO_ADS_DISABLED);
+            if (callback != null) {
+                callback.onAdFailed(placementId, ERROR_VIDEO_ADS_DISABLED, MSG_VIDEO_ADS_DISABLED);
+            }
+            return;
+        }
         HttpProvider.sendGetRequest(url, new BidscubeCallback() {
             @Override
             public void onSuccess(int responseCode, BidscubeResponse responseBody) {
-                ((Activity) context).runOnUiThread(() -> {
-                    setResponseAdPosition(responseBody.getPosition());
-                    AdPosition effectivePosition = getEffectiveAdPosition();
-
-                    SDKLogger.d(TAG, "Video ad response position: " + responseBody.getPosition() + " -> "
-                            + effectivePosition);
-
-                    final String adm = sanitizeAdm(responseBody.getAdm());
-
-                    if (handleRenderOverride(placementId, adm, effectivePosition, AdType.Type.VIDEO, callback)) {
-                        SDKLogger.d(TAG, "Video ad rendering overridden by host app");
-                        return;
-                    }
-
-                    SDKLogger.v("VastResponse", adm);
-                    VastParser.analyzeVast(adm);
-                    String vastRedirectUrl = VastParser.getClickThroughUrl(adm);
-
-                    if (effectivePosition == AdPosition.FULL_SCREEN) {
-                        SDKLogger.d(TAG, "Response indicates full screen display for video ad");
-
-
-                        Dialog dialog = new Dialog(context, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-
-                        FrameLayout frameContainer = new FrameLayout(context);
-                        frameContainer.setLayoutParams(new LinearLayout.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT));
-
-                        IMAPlayerHandler videoPlayer = new IMAPlayerHandler(adm, vastRedirectUrl, context, videoPlayerProvider);
-                        videoPlayer.setLayoutParams(new FrameLayout.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT));
-
-                        Button closeBtn = new Button(context);
-                        closeBtn.setText("✕");
-                        closeBtn.setTextSize(16);
-                        closeBtn.setBackgroundColor(0xCCF44336);
-                        closeBtn.setTextColor(Color.WHITE);
-                        closeBtn.setPadding(12, 6, 12, 6);
-                        closeBtn.setOnClickListener(v -> {
-                            videoPlayer.release();
-                            dialog.dismiss();
-                        });
-
-                        FrameLayout.LayoutParams closeBtnParams = new FrameLayout.LayoutParams(
-                                ViewGroup.LayoutParams.WRAP_CONTENT,
-                                ViewGroup.LayoutParams.WRAP_CONTENT);
-                        closeBtnParams.gravity = Gravity.TOP | Gravity.END;
-                        closeBtnParams.setMargins(0, 20, 20, 0);
-                        closeBtn.setLayoutParams(closeBtnParams);
-
-                        frameContainer.addView(videoPlayer);
-                        frameContainer.addView(closeBtn);
-                        dialog.setContentView(frameContainer);
-                        centerFullScreenDialog(dialog, frameContainer);
-                        dialog.show();
-
-                        videoPlayer.playVast(adm, false);
-                        currentVideoPlayer = videoPlayer;
-
-                        SDKLogger.d(TAG,
-                                "Video ad displayed fullscreen with position: " + responseBody.getPosition()
-                                        + " -> " + effectivePosition);
-                    } else {
-                        SDKLogger.d(TAG, "Response indicates windowed display for video ad");
-
-
-                        Dialog dialog = new Dialog(context);
-                        String positionName = getPositionDisplayName();
-                        dialog.setTitle("Video Ad - " + positionName);
-
-                        FrameLayout frameContainer = new FrameLayout(context);
-                        frameContainer.setLayoutParams(new LinearLayout.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT));
-
-                        IMAPlayerHandler videoPlayer = new IMAPlayerHandler(adm, vastRedirectUrl, context, videoPlayerProvider);
-                        int heightPx = (int) TypedValue.applyDimension(
-                                TypedValue.COMPLEX_UNIT_DIP, 300, context.getResources().getDisplayMetrics());
-                        videoPlayer.setLayoutParams(new FrameLayout.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT, heightPx));
-
-                        Button closeBtn = new Button(context);
-                        closeBtn.setText("✕");
-                        closeBtn.setTextSize(16);
-                        closeBtn.setBackgroundColor(0xCCF44336);
-                        closeBtn.setTextColor(Color.WHITE);
-                        closeBtn.setPadding(12, 6, 12, 6);
-                        closeBtn.setOnClickListener(v -> {
-                            videoPlayer.release();
-                            dialog.dismiss();
-                        });
-
-                        FrameLayout.LayoutParams closeBtnParams = new FrameLayout.LayoutParams(
-                                ViewGroup.LayoutParams.WRAP_CONTENT,
-                                ViewGroup.LayoutParams.WRAP_CONTENT);
-                        closeBtnParams.gravity = Gravity.TOP | Gravity.END;
-                        closeBtnParams.setMargins(0, 20, 20, 0);
-                        closeBtn.setLayoutParams(closeBtnParams);
-
-                        frameContainer.addView(videoPlayer);
-                        frameContainer.addView(closeBtn);
-                        dialog.setContentView(frameContainer);
-
-                        Window window = dialog.getWindow();
-                        if (window != null) {
-                            int dialogWidth = (int) (context.getResources().getDisplayMetrics().widthPixels * 0.8);
-                            int dialogHeight = (int) (context.getResources().getDisplayMetrics().heightPixels
-                                    * 0.7);
-                            positionWindowedDialog(window, dialogWidth, dialogHeight);
-                        }
-
-                        dialog.show();
-                        videoPlayer.playVast(adm, false);
-                        currentVideoPlayer = videoPlayer;
-
-                        SDKLogger.d(TAG, "Video ad displayed windowed with position: " + responseBody.getPosition()
-                                + " -> " + effectivePosition);
-                    }
-                });
+                AdmImaVast.onVideoAdResponse(AdDisplayManager.this, placementId, responseBody, callback);
             }
 
             @Override
@@ -802,164 +673,12 @@ public class AdDisplayManager {
 //     * @param installButtonText Custom text for the install button
 //     */
 
-    private String loadVastFromRaw(Context context, int resId) {
-        StringBuilder builder = new StringBuilder();
-        try (InputStream inputStream = context.getResources().openRawResource(resId);
-             BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                builder.append(line).append("\n");
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return builder.toString();
-    }
-
-
     public void showSkippableVideoAdFromFile(boolean isFullScreen) {
-        String adm = loadVastFromRaw(context, R.raw.vast);
-        SDKLogger.v("VastResponse", adm);
-        VastParser.analyzeVast(adm);
-        String vastRedirectUrl = VastParser.getClickThroughUrl(adm);
-        String companionImageUrl = VastParser.getCompanionImageUrl(adm);
-
-        Dialog dialog;
-        if (isFullScreen) {
-            dialog = new Dialog(context, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-        } else {
-            dialog = new Dialog(context);
-            String positionName = getPositionDisplayName();
-            dialog.setTitle("Skippable Video Ad - " + positionName);
+        if (!videoAdsEnabled) {
+            SDKLogger.w(TAG, MSG_VIDEO_ADS_DISABLED);
+            return;
         }
-
-        FrameLayout mainContainer = new FrameLayout(context);
-        mainContainer.setLayoutParams(new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT));
-
-        IMAPlayerHandler videoPlayer = new IMAPlayerHandler(adm, vastRedirectUrl, context, videoPlayerProvider);
-        if (isFullScreen) {
-            videoPlayer.setLayoutParams(new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT));
-        } else {
-            int heightPx = (int) TypedValue.applyDimension(
-                    TypedValue.COMPLEX_UNIT_DIP, 300, context.getResources().getDisplayMetrics());
-            videoPlayer.setLayoutParams(new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, heightPx));
-        }
-
-        mainContainer.addView(videoPlayer);
-        dialog.setContentView(mainContainer);
-        dialog.show();
-
-        videoPlayer.setOnVideoCompletionListener(new IMAPlayerHandler.OnVideoCompletionListener() {
-            @Override
-            public void onVideoCompleted() {
-                showFinalAdScreen(videoPlayer, mainContainer, companionImageUrl, vastRedirectUrl);
-            }
-
-            @Override
-            public void onVideoSkipped() {
-                showFinalAdScreen(videoPlayer, mainContainer, companionImageUrl, vastRedirectUrl);
-            }
-        });
-        videoPlayer.playVast(adm, false);
-    }
-
-    private void showFinalAdScreen(IMAPlayerHandler player, FrameLayout container, String imageUrl, String clickUrl) {
-        player.release();
-
-        final Dialog parentDialog = container.getParent() instanceof Dialog ? (Dialog) container.getParent() : null;
-
-        container.removeAllViews();
-        container.setBackgroundColor(Color.BLACK);
-
-        LinearLayout layout = new LinearLayout(context);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setGravity(Gravity.CENTER_HORIZONTAL);
-        FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-        layoutParams.gravity = Gravity.CENTER;
-        layout.setLayoutParams(layoutParams);
-
-        ShapeableImageView adImage = new ShapeableImageView(context);
-        int sizePx = (int) TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, 128, context.getResources().getDisplayMetrics());
-        LinearLayout.LayoutParams imageParams = new LinearLayout.LayoutParams(sizePx, sizePx);
-        imageParams.gravity = Gravity.CENTER_HORIZONTAL;
-        adImage.setLayoutParams(imageParams);
-
-        float cornerRadius = TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, 16, context.getResources().getDisplayMetrics());
-        adImage.setShapeAppearanceModel(
-                adImage.getShapeAppearanceModel()
-                        .toBuilder()
-                        .setAllCorners(CornerFamily.ROUNDED, cornerRadius)
-                        .build()
-        );
-
-        if (imageUrl != null && !imageUrl.isEmpty()) {
-            Glide.with(context).load(imageUrl).into(adImage);
-        } else {
-            adImage.setImageResource(android.R.drawable.ic_menu_report_image);
-        }
-
-        Button installBtn = new Button(context);
-        installBtn.setText("Install");
-        installBtn.setTextSize(18);
-        LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-        btnParams.gravity = Gravity.CENTER_HORIZONTAL;
-        btnParams.topMargin = (int) TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, 16, context.getResources().getDisplayMetrics());
-        installBtn.setLayoutParams(btnParams);
-
-        installBtn.setOnClickListener(v -> {
-            if (clickUrl != null && !clickUrl.isEmpty()) {
-                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(clickUrl));
-                context.startActivity(intent);
-            }
-        });
-
-        layout.addView(adImage);
-        layout.addView(installBtn);
-        container.addView(layout);
-
-        ImageButton closeBtn = new ImageButton(context);
-        closeBtn.setImageResource(R.drawable.close_small_24);
-        closeBtn.setBackgroundColor(Color.TRANSPARENT);
-        FrameLayout.LayoutParams closeParams = new FrameLayout.LayoutParams(
-                (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 24, context.getResources().getDisplayMetrics()),
-                (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 24, context.getResources().getDisplayMetrics())
-        );
-        closeParams.gravity = Gravity.TOP | Gravity.END;
-        closeParams.setMargins(0, (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 16, context.getResources().getDisplayMetrics()),
-                (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 16, context.getResources().getDisplayMetrics()), 0);
-        closeBtn.setLayoutParams(closeParams);
-
-        closeBtn.setOnClickListener(v -> {
-            if (parentDialog != null) {
-                parentDialog.dismiss();
-            } else {
-                container.removeAllViews();
-            }
-        });
-
-        container.addView(closeBtn);
-    }
-
-    /**
-     * Shows post-video buttons (exit and install) and hides skip button
-     */
-    private void showPostVideoButtons(Button exitBtn, Button installBtn, Button skipBtn) {
-        exitBtn.setVisibility(View.VISIBLE);
-        installBtn.setVisibility(View.VISIBLE);
-        skipBtn.setVisibility(View.GONE);
-        SDKLogger.d(TAG, "Post-video buttons displayed");
+        AdmImaVast.showSkippableFromFile(this, isFullScreen);
     }
 
     /**
@@ -1313,6 +1032,19 @@ public class AdDisplayManager {
     public View getVideoAdView(String placementId, String url, AdCallback callback) {
         SDKLogger.d(TAG, "Getting video ad view for integration: " + url);
 
+        if (!videoAdsEnabled) {
+            SDKLogger.w(TAG, MSG_VIDEO_ADS_DISABLED);
+            if (callback != null) {
+                callback.onAdFailed(placementId, ERROR_VIDEO_ADS_DISABLED, MSG_VIDEO_ADS_DISABLED);
+            }
+            TextView disabled = new TextView(context);
+            disabled.setText(MSG_VIDEO_ADS_DISABLED);
+            disabled.setTextColor(Color.WHITE);
+            disabled.setPadding(16, 16, 16, 16);
+            disabled.setBackgroundColor(Color.parseColor("#455A64"));
+            return disabled;
+        }
+
         LinearLayout adContainer = new LinearLayout(context);
         adContainer.setOrientation(LinearLayout.VERTICAL);
         adContainer.setLayoutParams(new ViewGroup.LayoutParams(
@@ -1345,35 +1077,7 @@ public class AdDisplayManager {
                         }
 
                         final String adm = sanitizeAdm(responseBody.getAdm());
-                        SDKLogger.v("VastResponse", adm);
-                        VastParser.analyzeVast(adm);
-                        String vastRedirectUrl = VastParser.getClickThroughUrl(adm);
-
-                        IMAPlayerHandler videoPlayer = new IMAPlayerHandler(adm, vastRedirectUrl, context, videoPlayerProvider);
-                        int heightPx = (int) TypedValue.applyDimension(
-                                TypedValue.COMPLEX_UNIT_DIP, 300, context.getResources().getDisplayMetrics());
-                        videoPlayer.setLayoutParams(new FrameLayout.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT, heightPx));
-
-                        Button playButton = new Button(context);
-                        playButton.setText("▶ PLAY VIDEO AD");
-                        playButton.setTextSize(16);
-                        playButton.setBackgroundColor(Color.parseColor("#FF5722"));
-                        playButton.setTextColor(Color.WHITE);
-                        playButton.setPadding(16, 8, 16, 8);
-                        playButton.setOnClickListener(v -> {
-                            videoPlayer.playVast(adm, false);
-                            playButton.setVisibility(View.GONE);
-                        });
-
-                        adContainer.addView(videoPlayer);
-                        adContainer.addView(playButton);
-
-                        if (callback != null) {
-                            callback.onAdLoaded(placementId);
-                        }
-
-                        SDKLogger.d(TAG, "Video ad view created and integrated into container");
+                        AdmImaVast.appendGetVideoAdView(AdDisplayManager.this, placementId, adm, adContainer, callback);
 
                     } catch (Exception e) {
                         SDKLogger.e(TAG, "Error creating video ad view: " + e.getMessage());

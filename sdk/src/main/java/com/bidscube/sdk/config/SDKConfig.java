@@ -30,6 +30,13 @@ public class SDKConfig {
     /** Optional; when null the SDK uses {@code new VideoView(context)} for IMA playback. */
     private final VideoPlayerProvider videoPlayerProvider;
 
+    /**
+     * When {@code false} (default), VAST/IMA video paths are not used. For image/native-only and minimal APK, keep
+     * {@code false} and use the {@code noIma} / {@code bidscube-sdk-lite} dependency variant when available.
+     * Set {@code true} for video; full Google IMA requires the {@code withIma} (standard) AAR, not the lite AAR.
+     */
+    private final boolean videoAdsEnabled;
+
     private SDKConfig(Builder builder) {
         this.appId = builder.appId;
         this.appName = builder.appName;
@@ -45,6 +52,7 @@ public class SDKConfig {
         this.usPrivacy = builder.usPrivacy;
         this.coppa = builder.coppa;
         this.videoPlayerProvider = builder.videoPlayerProvider;
+        this.videoAdsEnabled = builder.videoAdsEnabled;
     }
 
     public String getAppId() {
@@ -106,6 +114,10 @@ public class SDKConfig {
         return videoPlayerProvider;
     }
 
+    public boolean isVideoAdsEnabled() {
+        return videoAdsEnabled;
+    }
+
     /**
      * Get the SDK version from environment variable or default to 1.2.3
      */
@@ -134,6 +146,8 @@ public class SDKConfig {
         private Boolean coppa = null;
 
         private VideoPlayerProvider videoPlayerProvider = null;
+
+        private boolean videoAdsEnabled = false;
 
         /**
          * Create a new Builder with automatic app detection
@@ -298,9 +312,21 @@ public class SDKConfig {
         /**
          * Supply a custom {@link VideoView} implementation for IMA video ads (e.g. subclass with app-specific
          * buffering or analytics). When omitted, the SDK creates a standard {@link android.widget.VideoView}.
+         * Ignored when {@link #videoAdsEnabled(boolean)} is {@code false}.
          */
         public Builder videoPlayerProvider(VideoPlayerProvider videoPlayerProvider) {
             this.videoPlayerProvider = videoPlayerProvider;
+            return this;
+        }
+
+        /**
+     * When {@code false} (the default), the SDK does not create IMA video players or run VAST playback; video APIs fail fast
+     * with {@link com.bidscube.sdk.interfaces.AdCallback#onAdFailed}. Use {@code true} for VAST/IMA; use the
+     * {@code withIma} / full SDK artifact (not {@code noIma} / {@code bidscube-sdk-lite}) for Google IMA in the APK.
+     * Image, native, and banner flows are unchanged.
+     */
+    public Builder videoAdsEnabled(boolean videoAdsEnabled) {
+            this.videoAdsEnabled = videoAdsEnabled;
             return this;
         }
 

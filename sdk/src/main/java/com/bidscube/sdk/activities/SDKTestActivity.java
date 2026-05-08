@@ -132,6 +132,7 @@ public class SDKTestActivity extends Activity {
                     .enableDebugMode(true)
                     .defaultAdTimeout(30000)
                     .defaultAdPosition("UNKNOWN")
+                    .videoAdsEnabled(true)
                     .build();
 
             BidscubeSDK.initialize(this, config);

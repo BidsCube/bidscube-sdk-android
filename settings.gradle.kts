@@ -14,5 +14,7 @@ pluginManagement {
 
 rootProject.name = "bidscube-sdk"
 include(":sdk")
-//comment to ignore test app
-//include(":bidscube-testapp-android")
+
+// Publisher test app (sibling repo folder): local `implementation(project(":sdk"))`, no Maven AAR.
+include(":bidscube-testapp-android")
+project(":bidscube-testapp-android").projectDir = file("../bidscube-testapp-android")

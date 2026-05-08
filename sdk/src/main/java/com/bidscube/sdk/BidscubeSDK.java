@@ -3,9 +3,6 @@ package com.bidscube.sdk;
 import android.content.Context;
 import android.view.View;
 
-import androidx.annotation.OptIn;
-import androidx.media3.common.util.UnstableApi;
-
 import com.bidscube.sdk.config.SDKConfig;
 import com.bidscube.sdk.interfaces.AdCallback;
 import com.bidscube.sdk.interfaces.ConsentCallback;
@@ -29,7 +26,6 @@ public class BidscubeSDK {
      * @param context Application context
      * @param config  SDK configuration object
      */
-    @OptIn(markerClass = UnstableApi.class)
     public static void initialize(Context context, SDKConfig config) {
         if (sdkInstance != null) {
             SDKLogger.w(TAG, "SDK already initialized");

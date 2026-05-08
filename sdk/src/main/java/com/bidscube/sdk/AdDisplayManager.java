@@ -21,8 +21,6 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.VideoView;
 
-import androidx.media3.common.util.UnstableApi;
-
 import com.bidscube.sdk.ads.AdType;
 import com.bidscube.sdk.ads.VideoAdType;
 import com.bidscube.sdk.interfaces.AdCallback;
@@ -40,7 +38,8 @@ import com.bidscube.sdk.utils.VastParser;
 import com.bidscube.sdk.config.VideoPlayerProvider;
 import com.bidscube.sdk.utils.SDKLogger;
 import com.bidscube.sdk.view.BannerViewFactory;
-import com.bidscube.sdk.view.IMAPlayerHandler;
+import com.bidscube.sdk.view.BidscubeVideoAdPlayer;
+import com.bidscube.sdk.view.VideoAdPlayerFactory;
 import com.bidscube.sdk.view.NativeAdView;
 import com.bidscube.sdk.view.NativeAdBinder;
 import com.bumptech.glide.Glide;
@@ -75,7 +74,6 @@ import java.util.regex.Pattern;
  * - Video Ads: showVideoAdWindowedInternal()
  * - Native Ads: showNativeAdWindowed()
  */
-@UnstableApi
 public class AdDisplayManager {
 
     private static final String TAG = "AdDisplayManager";
@@ -84,7 +82,7 @@ public class AdDisplayManager {
     private final VideoPlayerProvider videoPlayerProvider;
 
     private WebView currentBanner = null;
-    private IMAPlayerHandler currentVideoPlayer = null;
+    private BidscubeVideoAdPlayer currentVideoPlayer = null;
     private NativeAdView currentNativeAd = null;
 
     private FrameLayout overlayContainer;
@@ -363,7 +361,7 @@ public class AdDisplayManager {
     /**
      * Configures video player for full screen display
      */
-    private void configureVideoPlayerForFullScreen(IMAPlayerHandler videoPlayer) {
+    private void configureVideoPlayerForFullScreen(BidscubeVideoAdPlayer videoPlayer) {
         try {
 
             Field videoViewField = videoPlayer.getClass().getDeclaredField("videoView");
@@ -659,7 +657,7 @@ public class AdDisplayManager {
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT));
 
-                        IMAPlayerHandler videoPlayer = new IMAPlayerHandler(adm, vastRedirectUrl, context, videoPlayerProvider);
+                        BidscubeVideoAdPlayer videoPlayer = VideoAdPlayerFactory.create(context, adm, vastRedirectUrl, videoPlayerProvider);
                         videoPlayer.setLayoutParams(new FrameLayout.LayoutParams(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT));
@@ -682,7 +680,7 @@ public class AdDisplayManager {
                         closeBtnParams.setMargins(0, 20, 20, 0);
                         closeBtn.setLayoutParams(closeBtnParams);
 
-                        frameContainer.addView(videoPlayer);
+                        frameContainer.addView(videoPlayer.asViewGroup());
                         frameContainer.addView(closeBtn);
                         dialog.setContentView(frameContainer);
                         centerFullScreenDialog(dialog, frameContainer);
@@ -707,7 +705,7 @@ public class AdDisplayManager {
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT));
 
-                        IMAPlayerHandler videoPlayer = new IMAPlayerHandler(adm, vastRedirectUrl, context, videoPlayerProvider);
+                        BidscubeVideoAdPlayer videoPlayer = VideoAdPlayerFactory.create(context, adm, vastRedirectUrl, videoPlayerProvider);
                         int heightPx = (int) TypedValue.applyDimension(
                                 TypedValue.COMPLEX_UNIT_DIP, 300, context.getResources().getDisplayMetrics());
                         videoPlayer.setLayoutParams(new FrameLayout.LayoutParams(
@@ -731,7 +729,7 @@ public class AdDisplayManager {
                         closeBtnParams.setMargins(0, 20, 20, 0);
                         closeBtn.setLayoutParams(closeBtnParams);
 
-                        frameContainer.addView(videoPlayer);
+                        frameContainer.addView(videoPlayer.asViewGroup());
                         frameContainer.addView(closeBtn);
                         dialog.setContentView(frameContainer);
 
@@ -838,7 +836,7 @@ public class AdDisplayManager {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
 
-        IMAPlayerHandler videoPlayer = new IMAPlayerHandler(adm, vastRedirectUrl, context, videoPlayerProvider);
+        BidscubeVideoAdPlayer videoPlayer = VideoAdPlayerFactory.create(context, adm, vastRedirectUrl, videoPlayerProvider);
         if (isFullScreen) {
             videoPlayer.setLayoutParams(new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -850,11 +848,11 @@ public class AdDisplayManager {
                     ViewGroup.LayoutParams.MATCH_PARENT, heightPx));
         }
 
-        mainContainer.addView(videoPlayer);
+        mainContainer.addView(videoPlayer.asViewGroup());
         dialog.setContentView(mainContainer);
         dialog.show();
 
-        videoPlayer.setOnVideoCompletionListener(new IMAPlayerHandler.OnVideoCompletionListener() {
+        videoPlayer.setOnVideoCompletionListener(new BidscubeVideoAdPlayer.VideoCompletionListener() {
             @Override
             public void onVideoCompleted() {
                 showFinalAdScreen(videoPlayer, mainContainer, companionImageUrl, vastRedirectUrl);
@@ -868,7 +866,7 @@ public class AdDisplayManager {
         videoPlayer.playVast(adm, false);
     }
 
-    private void showFinalAdScreen(IMAPlayerHandler player, FrameLayout container, String imageUrl, String clickUrl) {
+    private void showFinalAdScreen(BidscubeVideoAdPlayer player, FrameLayout container, String imageUrl, String clickUrl) {
         player.release();
 
         final Dialog parentDialog = container.getParent() instanceof Dialog ? (Dialog) container.getParent() : null;
@@ -1349,7 +1347,7 @@ public class AdDisplayManager {
                         VastParser.analyzeVast(adm);
                         String vastRedirectUrl = VastParser.getClickThroughUrl(adm);
 
-                        IMAPlayerHandler videoPlayer = new IMAPlayerHandler(adm, vastRedirectUrl, context, videoPlayerProvider);
+                        BidscubeVideoAdPlayer videoPlayer = VideoAdPlayerFactory.create(context, adm, vastRedirectUrl, videoPlayerProvider);
                         int heightPx = (int) TypedValue.applyDimension(
                                 TypedValue.COMPLEX_UNIT_DIP, 300, context.getResources().getDisplayMetrics());
                         videoPlayer.setLayoutParams(new FrameLayout.LayoutParams(
@@ -1366,7 +1364,7 @@ public class AdDisplayManager {
                             playButton.setVisibility(View.GONE);
                         });
 
-                        adContainer.addView(videoPlayer);
+                        adContainer.addView(videoPlayer.asViewGroup());
                         adContainer.addView(playButton);
 
                         if (callback != null) {

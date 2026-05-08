@@ -13,6 +13,7 @@ import com.bidscube.sdk.models.natives.Image;
 import com.bidscube.sdk.models.natives.NativeData;
 import com.bidscube.sdk.models.natives.Video;
 import com.bidscube.sdk.models.natives.EventTracker;
+import com.bidscube.sdk.utils.HtmlAdmCreativeParser;
 import com.bidscube.sdk.utils.SDKLogger;
 
 import java.util.ArrayList;
@@ -36,19 +37,36 @@ public class NativeAdParser {
             SDKLogger.e(TAG, "ADM field is null or empty");
             return null;
         }
-        
-        SDKLogger.d(TAG, "Parsing ADM field: " + adm.substring(0, Math.min(100, adm.length())) + "...");
-        
-        try {
 
+        SDKLogger.d(TAG, "Parsing ADM field: " + adm.substring(0, Math.min(100, adm.length())) + "...");
+
+        NativeAd nativeAd = tryParseOpenRtbNative(adm.trim());
+        if (nativeAd != null) {
+            return nativeAd;
+        }
+
+        if (HtmlAdmCreativeParser.looksLikeHtmlAdm(adm)) {
+            nativeAd = HtmlAdmCreativeParser.parseToNativeAd(adm);
+            if (nativeAd != null) {
+                SDKLogger.d(TAG, "Parsed native model from HTML ADM (image + trackers)");
+                return nativeAd;
+            }
+        }
+
+        SDKLogger.e(TAG, "Failed to parse native ad from ADM (not OpenRTB native or supported HTML)");
+        return null;
+    }
+
+    private static NativeAd tryParseOpenRtbNative(String adm) {
+        try {
             JSONObject admJson = new JSONObject(adm);
             SDKLogger.d(TAG, "Successfully parsed ADM JSON");
 
             if (!admJson.has("native")) {
-                SDKLogger.e(TAG, "ADM does not contain native ad data");
+                SDKLogger.d(TAG, "ADM JSON has no native object");
                 return null;
             }
-            
+
             JSONObject nativeJson = admJson.getJSONObject("native");
             SDKLogger.d(TAG, "Found native object with keys: " + getJsonKeys(nativeJson));
 
@@ -78,17 +96,17 @@ public class NativeAdParser {
                 nativeAd.eventtrackers = parseEventTrackers(nativeJson.getJSONArray("eventtrackers"));
                 SDKLogger.d(TAG, "Parsed " + (nativeAd.eventtrackers != null ? nativeAd.eventtrackers.size() : 0) + " event trackers");
             }
-            
-            SDKLogger.d(TAG, "Successfully parsed native ad with " + 
-                  (nativeAd.assets != null ? nativeAd.assets.size() : 0) + " assets");
-            
+
+            SDKLogger.d(TAG, "Successfully parsed native ad with "
+                    + (nativeAd.assets != null ? nativeAd.assets.size() : 0) + " assets");
+
             return nativeAd;
-            
+
         } catch (JSONException e) {
-            SDKLogger.e(TAG, "Failed to parse native ad from ADM: " + e.getMessage());
+            SDKLogger.d(TAG, "ADM is not OpenRTB native JSON: " + e.getMessage());
             return null;
         } catch (Exception e) {
-            SDKLogger.e(TAG, "Unexpected error parsing native ad: " + e.getMessage());
+            SDKLogger.e(TAG, "Unexpected error parsing OpenRTB native: " + e.getMessage());
             return null;
         }
     }

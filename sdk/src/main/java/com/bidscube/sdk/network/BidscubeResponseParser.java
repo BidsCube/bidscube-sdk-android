@@ -1,7 +1,6 @@
 package com.bidscube.sdk.network;
 
-import android.util.Log;
-
+import com.bidscube.sdk.utils.AdmPayloadUtils;
 import com.bidscube.sdk.utils.SDKLogger;
 
 import org.json.JSONException;
@@ -29,6 +28,13 @@ public class BidscubeResponseParser {
             
         } catch (JSONException e) {
             SDKLogger.e(TAG, "Failed to parse JSON response: " + e.getMessage());
+            if (jsonString == null) {
+                return null;
+            }
+            String repaired = AdmPayloadUtils.unwrapJsonAdmEnvelope(jsonString.trim());
+            if (repaired != null && repaired.trim().startsWith("<")) {
+                return new BidscubeResponse(repaired, 0);
+            }
             return null;
         }
     }

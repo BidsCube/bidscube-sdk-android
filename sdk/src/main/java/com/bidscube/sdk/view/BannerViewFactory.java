@@ -17,6 +17,27 @@ import com.bidscube.sdk.utils.SDKLogger;
 
 public class BannerViewFactory {
 
+    /**
+     * After broad {@code #ad-root * { width:100% }} rules, 1×1 trackers become huge broken tiles — hide by URL and size.
+     */
+    private static final String AD_WEBVIEW_TRACKING_IMG_CSS =
+            "#ad-root img[src*=\"t=impr\"],#ad-root img[src*=\"t=check\"],"
+                    + "#ad-root img[width=\"1\"],#ad-root img[height=\"1\"],#ad-root img[width='1'],#ad-root img[height='1']{"
+                    + "display:none!important;width:0!important;height:0!important;max-width:0!important;max-height:0!important;"
+                    + "visibility:hidden!important;opacity:0!important;pointer-events:none!important;position:absolute!important;"
+                    + "margin:0!important;padding:0!important;}";
+
+    private static final String JS_REMOVE_TRACKING_AND_TINY_IMGS =
+            "(function(){try{var imgs=document.querySelectorAll('img');for(var i=imgs.length-1;i>=0;i--){var im=imgs[i];"
+                    + "var src=(im.getAttribute('src')||'').toLowerCase();"
+                    + "if(src.indexOf('t=impr')>=0||src.indexOf('t=check')>=0){if(im.parentNode)im.parentNode.removeChild(im);continue;}"
+                    + "var w=im.naturalWidth||parseInt(im.getAttribute('width')||'0',10)||im.width;"
+                    + "var h=im.naturalHeight||parseInt(im.getAttribute('height')||'0',10)||im.height;"
+                    + "if((w&&w<=2)||(h&&h<=2)){if(im.parentNode)im.parentNode.removeChild(im);continue;}"
+                    + "var st=(im.getAttribute('style')||'').toLowerCase();"
+                    + "if(st.indexOf('position:absolute')>=0&&(st.indexOf('width:1px')>=0||st.indexOf('height:1px')>=0)){if(im.parentNode)im.parentNode.removeChild(im);}"
+                    + "}}catch(e){}})();";
+
     @SuppressLint("SetJavaScriptEnabled")
     public static WebView createBanner(Context context, String adHtml) {
         WebView webView = new WebView(context);
@@ -159,8 +180,14 @@ public class BannerViewFactory {
                     }, 800);
                     // Additional cleanup: remove tiny/tracking images that may appear under the creative
                     try {
-                        String removeTinyImgsJs = "(function(){try{var imgs=document.getElementsByTagName('img'); for(var i=imgs.length-1;i>=0;i--){var im=imgs[i]; try{var w=im.naturalWidth||im.width; var h=im.naturalHeight||im.height; if((w&&w<=2)||(h&&h<=2)){ im.parentNode&&im.parentNode.removeChild(im); } else { var s=(im.getAttribute('style')||'').toLowerCase(); if(s.indexOf('position: absolute')!==-1 && (s.indexOf('width:1px')!==-1||s.indexOf('height:1px')!==-1)){ im.parentNode&&im.parentNode.removeChild(im); } } }catch(e){} } }catch(e){} })();";
+                        String removeTinyImgsJs = JS_REMOVE_TRACKING_AND_TINY_IMGS;
                         view.evaluateJavascript(removeTinyImgsJs, null);
+                        view.postDelayed(() -> {
+                            try {
+                                view.evaluateJavascript(JS_REMOVE_TRACKING_AND_TINY_IMGS, null);
+                            } catch (Throwable ignored) {
+                            }
+                        }, 650);
                     } catch (Throwable ignored) {}
                  } catch (Throwable ignored) {
                  }
@@ -207,7 +234,10 @@ public class BannerViewFactory {
              String content = adHtml != null ? adHtml : "";
             content = AdmPayloadUtils.unwrapJsonAdmEnvelope(content);
             content = AdmPayloadUtils.decodeLiteralUnicodeEscapes(content);
+            content = AdmPayloadUtils.stripInterTagJsonTextJunk(content);
             content = AdmPayloadUtils.extractEmbeddedAdmJsonFromCreative(content);
+            content = AdmPayloadUtils.stripInterTagJsonTextJunk(content);
+            content = AdmPayloadUtils.stripTrailingJsonCloseAfterHtml(content);
             SDKLogger.d("BannerViewFactory", "createBanner called, admLen=" + (adHtml != null ? adHtml.length() : 0));
 
             String lower = content.toLowerCase();
@@ -248,6 +278,9 @@ public class BannerViewFactory {
                 }
             }
 
+            content = AdmPayloadUtils.stripInterTagJsonTextJunk(content);
+            content = AdmPayloadUtils.stripTrailingJsonCloseAfterHtml(content);
+
             // Remove inline style attributes so our CSS and JS can normalize sizing and positioning.
             // This helps with creatives that embed fixed pixel widths/heights or negative margins.
             try {
@@ -257,6 +290,8 @@ public class BannerViewFactory {
                 // Remove obvious 1x1 tracking images and absolutely positioned 1px beacons
                 content = content.replaceAll("(?i)<img[^>]*(?:width\\s*=\\s*['\"]?1['\"]?|height\\s*=\\s*['\"]?1['\"]?)[^>]*>", "");
                 content = content.replaceAll("(?i)<img[^>]*style=['\"][^'\"]*(?:position\\s*:\\s*absolute|width\\s*:\\s*1px|height\\s*:\\s*1px)[^'\"]*['\"][^>]*>", "");
+                content = content.replaceAll("(?i)<img\\b[^>]*t=impr[^>]*>", "");
+                content = content.replaceAll("(?i)<img\\b[^>]*t=check[^>]*>", "");
             } catch (Throwable ignored) {
             }
 
@@ -286,6 +321,7 @@ public class BannerViewFactory {
                     + "display:block !important;"
                     + "max-width:100% !important;"
                     + "}");
+            sb.append(AD_WEBVIEW_TRACKING_IMG_CSS);
 
 
             /* --- AdChoices / i-icon wrapper override --- */
@@ -465,8 +501,14 @@ public class BannerViewFactory {
                     }, 800);
                     // Additional cleanup: remove tiny/tracking images that may appear under the creative
                     try {
-                        String removeTinyImgsJs = "(function(){try{var imgs=document.getElementsByTagName('img'); for(var i=imgs.length-1;i>=0;i--){var im=imgs[i]; try{var w=im.naturalWidth||im.width; var h=im.naturalHeight||im.height; if((w&&w<=2)||(h&&h<=2)){ im.parentNode&&im.parentNode.removeChild(im); } else { var s=(im.getAttribute('style')||'').toLowerCase(); if(s.indexOf('position: absolute')!==-1 && (s.indexOf('width:1px')!==-1||s.indexOf('height:1px')!==-1)){ im.parentNode&&im.parentNode.removeChild(im); } } }catch(e){} } }catch(e){} })();";
+                        String removeTinyImgsJs = JS_REMOVE_TRACKING_AND_TINY_IMGS;
                         view.evaluateJavascript(removeTinyImgsJs, null);
+                        view.postDelayed(() -> {
+                            try {
+                                view.evaluateJavascript(JS_REMOVE_TRACKING_AND_TINY_IMGS, null);
+                            } catch (Throwable ignored) {
+                            }
+                        }, 650);
                     } catch (Throwable ignored) {}
                  } catch (Throwable ignored) {
                  }
@@ -513,7 +555,10 @@ public class BannerViewFactory {
              String content = adHtml != null ? adHtml : "";
             content = AdmPayloadUtils.unwrapJsonAdmEnvelope(content);
             content = AdmPayloadUtils.decodeLiteralUnicodeEscapes(content);
+            content = AdmPayloadUtils.stripInterTagJsonTextJunk(content);
             content = AdmPayloadUtils.extractEmbeddedAdmJsonFromCreative(content);
+            content = AdmPayloadUtils.stripInterTagJsonTextJunk(content);
+            content = AdmPayloadUtils.stripTrailingJsonCloseAfterHtml(content);
             SDKLogger.d("BannerViewFactory", "createBanner called, admLen=" + (adHtml != null ? adHtml.length() : 0));
 
             String lower = content.toLowerCase();
@@ -554,6 +599,9 @@ public class BannerViewFactory {
                 }
             }
 
+            content = AdmPayloadUtils.stripInterTagJsonTextJunk(content);
+            content = AdmPayloadUtils.stripTrailingJsonCloseAfterHtml(content);
+
             // Remove inline style attributes so our CSS and JS can normalize sizing and positioning.
             // This helps with creatives that embed fixed pixel widths/heights or negative margins.
             try {
@@ -563,6 +611,8 @@ public class BannerViewFactory {
                 // Remove obvious 1x1 tracking images and absolutely positioned 1px beacons
                 content = content.replaceAll("(?i)<img[^>]*(?:width\\s*=\\s*['\"]?1['\"]?|height\\s*=\\s*['\"]?1['\"]?)[^>]*>", "");
                 content = content.replaceAll("(?i)<img[^>]*style=['\"][^'\"]*(?:position\\s*:\\s*absolute|width\\s*:\\s*1px|height\\s*:\\s*1px)[^'\"]*['\"][^>]*>", "");
+                content = content.replaceAll("(?i)<img\\b[^>]*t=impr[^>]*>", "");
+                content = content.replaceAll("(?i)<img\\b[^>]*t=check[^>]*>", "");
             } catch (Throwable ignored) {
             }
 
@@ -592,6 +642,7 @@ public class BannerViewFactory {
                     + "display:block !important;"
                     + "max-width:100% !important;"
                     + "}");
+            sb.append(AD_WEBVIEW_TRACKING_IMG_CSS);
 
 
             /* --- AdChoices / i-icon wrapper override --- */

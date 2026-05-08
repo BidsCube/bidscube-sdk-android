@@ -62,6 +62,7 @@ public class WindowedAdTestActivity extends Activity {
                     .enableLogging(true)
                     .enableDebugMode(true)
                     .defaultAdPosition("UNKNOWN")
+                    .videoAdsEnabled(true)
                     .build();
 
             BidscubeSDK.initialize(this, config);

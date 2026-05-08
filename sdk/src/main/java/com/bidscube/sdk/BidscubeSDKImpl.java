@@ -6,8 +6,6 @@ import android.content.Context;
 import android.view.View;
 import android.widget.TextView;
 
-import androidx.media3.common.util.UnstableApi;
-
 import com.bidscube.sdk.config.SDKConfig;
 import com.bidscube.sdk.consent.ConsentManager;
 import com.bidscube.sdk.device.providers.DeviceInfoProvider;
@@ -26,10 +24,15 @@ import com.bidscube.sdk.utils.SDKLogger;
  * This class handles all ad operations and provides a clean interface for
  * external applications
  */
-@UnstableApi
 public class BidscubeSDKImpl implements IBidscubeSDK {
 
     private static final String TAG = "BidscubeSDKImpl";
+
+    private static final int ERROR_VIDEO_ADS_DISABLED = -2;
+
+    private static final String MSG_VIDEO_ADS_DISABLED =
+            "Video ads are disabled in SDKConfig (videoAdsEnabled=false). "
+                    + "Use SDKConfig.Builder.videoAdsEnabled(true) to enable VAST/IMA playback.";
 
     private Context context;
     private SDKConfig config;
@@ -61,7 +64,11 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             deviceInfoProvider.getDeviceInfoAsync(deviceInfo -> {
                 this.deviceInfo = deviceInfo;
 
-                this.adDisplayManager = new AdDisplayManager(context, deviceInfo, config.getVideoPlayerProvider());
+                this.adDisplayManager = new AdDisplayManager(
+                        context,
+                        deviceInfo,
+                        config.getVideoPlayerProvider(),
+                        config.isVideoAdsEnabled());
 
                 this.isInitialized = true;
                 SDKLogger.d(TAG, "SDK initialized successfully");
@@ -106,6 +113,13 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
     @Override
     public void showVideoAd(String placementId, AdCallback callback) {
         checkInitialization();
+        if (!config.isVideoAdsEnabled()) {
+            SDKLogger.w(TAG, MSG_VIDEO_ADS_DISABLED);
+            if (callback != null) {
+                callback.onAdFailed(placementId, ERROR_VIDEO_ADS_DISABLED, MSG_VIDEO_ADS_DISABLED);
+            }
+            return;
+        }
         if (callback != null)
             callback.onAdLoading(placementId);
 
@@ -132,6 +146,13 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
     @Override
     public void showSkippableVideoAd(String placementId, AdCallback callback) {
         checkInitialization();
+        if (!config.isVideoAdsEnabled()) {
+            SDKLogger.w(TAG, MSG_VIDEO_ADS_DISABLED);
+            if (callback != null) {
+                callback.onAdFailed(placementId, ERROR_VIDEO_ADS_DISABLED, MSG_VIDEO_ADS_DISABLED);
+            }
+            return;
+        }
         if (callback != null)
             callback.onAdLoading(placementId);
 
@@ -247,6 +268,13 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
     @Override
     public View getVideoAdView(String placementId, AdCallback callback) {
         checkInitialization();
+        if (!config.isVideoAdsEnabled()) {
+            SDKLogger.w(TAG, MSG_VIDEO_ADS_DISABLED);
+            if (callback != null) {
+                callback.onAdFailed(placementId, ERROR_VIDEO_ADS_DISABLED, MSG_VIDEO_ADS_DISABLED);
+            }
+            return createErrorView(MSG_VIDEO_ADS_DISABLED);
+        }
         if (callback != null)
             callback.onAdLoading(placementId);
 

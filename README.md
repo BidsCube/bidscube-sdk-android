@@ -36,6 +36,8 @@ dependencies {
 }
 ```
 
+**Smaller APK (no Google IMA on the dependency graph):** use the **`bidscube-sdk-lite`** artifact (the `noIma` / `vastIma` variant). VAST / IMA video is not included; set `SDKConfig.Builder.videoAdsEnabled(false)` (default) and use banner/image/native. For VAST video use the full **`bidscube-sdk`** artifact, `withIma`, and `videoAdsEnabled(true)`.
+
 Groovy DSL (build.gradle):
 
 ```groovy
@@ -552,6 +554,7 @@ This README and examples are updated for Bidscube SDK version 1.2.3.
 
 - Maven: published SDK POM uses `packaging=aar`; BOM lives under `bom/pom.xml` and declares `com.bidscube:bidscube-sdk` with `<type>aar</type>` for Maven consumers.
 - Optional `SDKConfig.Builder.videoPlayerProvider(VideoPlayerProvider)` supplies the `VideoView` used for IMA video ads (default remains a standard `VideoView`).
+- Optional `SDKConfig.Builder.videoAdsEnabled(false)` disables VAST/IMA playback; image and native flows are unchanged. Direct AndroidX Media3 dependencies were removed from the SDK module.
 
 ## Changes from 1.2.2
 

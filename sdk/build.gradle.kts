@@ -1,20 +1,16 @@
 import org.gradle.api.GradleException
-import org.gradle.api.publish.maven.MavenPom
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.publish.PublishingExtension
 
 plugins {
     id("com.android.library")
-    kotlin("android")
     id("maven-publish")
 }
 
-// When :sdk is included from the publisher test app, root gradle.properties may differ;
-// keep version in sync via -Pbidscube.version=… or env BidscubeVersion.
 version =
     (findProperty("bidscube.version") as String?)
         ?: System.getenv("BidscubeVersion")
-        ?: "1.2.3"
+        ?: "1.2.4"
 
 android {
     namespace = "com.bidscube.sdk"
@@ -25,14 +21,13 @@ android {
         consumerProguardFiles("consumer-rules.pro")
     }
 
-    flavorDimensions += "vastIma"
+    flavorDimensions += "videoMode"
     productFlavors {
-        create("withIma") {
-            dimension = "vastIma"
-            isDefault = true
+        create("liteNoVideo") {
+            dimension = "videoMode"
         }
-        create("noIma") {
-            dimension = "vastIma"
+        create("fullVideo") {
+            dimension = "videoMode"
         }
     }
 
@@ -49,66 +44,181 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
-        isCoreLibraryDesugaringEnabled = true
+        isCoreLibraryDesugaringEnabled = false
     }
 
     publishing {
-        singleVariant("withImaRelease") {
+        multipleVariants("liteNoVideoRelease") {
+            includeBuildTypeValues("release")
+            includeFlavorDimensionAndValues("videoMode", "liteNoVideo")
             withSourcesJar()
             withJavadocJar()
         }
-        singleVariant("noImaRelease") {
+        multipleVariants("fullVideoRelease") {
+            includeBuildTypeValues("release")
+            includeFlavorDimensionAndValues("videoMode", "fullVideo")
             withSourcesJar()
             withJavadocJar()
         }
     }
 }
 
+val media3Version = "1.4.1"
+
 dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
-    compileOnly("com.android.tools:desugar_jdk_libs:2.0.4")
+
     implementation("com.google.android.ump:user-messaging-platform:2.2.0")
     implementation("com.google.android.gms:play-services-ads-identifier:18.0.1")
     implementation("androidx.cardview:cardview:1.0.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("com.github.bumptech.glide:glide:4.15.1")
-    "withImaImplementation"("com.google.ads.interactivemedia.v3:interactivemedia:3.37.0")
+
+    "fullVideoImplementation"("androidx.media3:media3-common:$media3Version")
+    "fullVideoImplementation"("androidx.media3:media3-ui:$media3Version")
+    "fullVideoImplementation"("com.google.ads.interactivemedia.v3:interactivemedia:3.37.0")
+}
+
+fun org.gradle.api.Project.validateBidscubePublication(pubName: String, expectedArtifactId: String) {
+    val publishing = extensions.getByType<PublishingExtension>()
+    val pub =
+        publishing.publications.findByName(pubName) as? MavenPublication
+            ?: throw GradleException("No '$pubName' publication found")
+
+    val aarArtifacts = pub.artifacts.filter { it.extension == "aar" }
+    if (aarArtifacts.size != 1) {
+        throw GradleException(
+            "Publication $pubName must contain exactly one AAR, found ${aarArtifacts.size}. " +
+                "Artifacts: " + pub.artifacts.joinToString { "${it.classifier ?: "main"}:${it.extension}" }
+        )
+    }
+
+    val aarFile = aarArtifacts.single().file
+    if (aarFile == null || !aarFile.exists()) {
+        throw GradleException("Published AAR file is missing: ${aarFile?.path}")
+    }
+
+    val jars = pub.artifacts.filter { it.extension == "jar" }
+    val classifiers = jars.mapNotNull { it.classifier }.toSet()
+    if ("sources" !in classifiers) {
+        throw GradleException("Publication $pubName must include a sources classifier jar; have: $classifiers")
+    }
+    if ("javadoc" !in classifiers) {
+        throw GradleException("Publication $pubName must include a javadoc classifier jar; have: $classifiers")
+    }
+
+    val pomFile = layout.buildDirectory.file("publications/$pubName/pom-default.xml").get().asFile
+    if (!pomFile.exists()) {
+        throw GradleException("Generated POM not found: ${pomFile.path}")
+    }
+    val pomText = pomFile.readText()
+    if (!pomText.contains("<packaging>aar</packaging>")) {
+        throw GradleException("POM must declare <packaging>aar</packaging>; check ${pomFile.path}")
+    }
+    if (!pomText.contains("<artifactId>$expectedArtifactId</artifactId>")) {
+        throw GradleException("POM artifactId must be $expectedArtifactId; check ${pomFile.path}")
+    }
 }
 
 afterEvaluate {
     publishing {
         publications {
-            create<MavenPublication>("release") {
+            create<MavenPublication>("bidscubeSdkLiteNoVideo") {
                 groupId = "com.bidscube"
-                artifactId = "bidscube-sdk"
+                artifactId = "bidscube-sdk-lite-no-video"
                 version = project.version.toString()
-                from(components["withImaRelease"])
+                from(components["liteNoVideoRelease"])
                 pom {
-                    name.set("Bidscube SDK (full / VAST-IMA)")
+                    name.set("Bidscube SDK (lite, no video)")
                     description.set(
-                        "Bidscube SDK for Android with Google IMA (VAST). " +
-                            "For a smaller AAR without the IMA dependency, use artifactId bidscube-sdk-lite. " +
-                            "Call SDKConfig.Builder.videoAdsEnabled(true) for VAST; default is false for minimal integrations."
+                        "Bidscube Android SDK without Google IMA / Media3 video stack. " +
+                            "Video placements resolve to a no-op; apps do not need core library desugaring for this artifact."
                     )
                     url.set("https://github.com/BidsCube/bidscube-sdk")
-                    appendCommonPom(this)
+                    licenses {
+                        license {
+                            name.set("MIT License")
+                            url.set("https://github.com/BidsCube/bidscube-sdk/blob/main/LICENSE")
+                        }
+                    }
+                    developers {
+                        developer {
+                            id.set("bidscube-team")
+                            name.set("Bidscube Team")
+                            email.set("dev@bidscube.com")
+                            organization.set("Bidscube")
+                            organizationUrl.set("https://bidscube.com")
+                        }
+                    }
+                    scm {
+                        connection.set("scm:git:git://github.com/BidsCube/bidscube-sdk.git")
+                        developerConnection.set("scm:git:ssh://github.com/BidsCube/bidscube-sdk.git")
+                        url.set("https://github.com/BidsCube/bidscube-sdk")
+                    }
+                    withXml {
+                        val root = asNode()
+                        val existing = root.get("packaging")
+                        if (existing == null) {
+                            root.appendNode("packaging", "aar")
+                        } else {
+                            val nodeList = existing as groovy.util.NodeList
+                            if (nodeList.isEmpty()) {
+                                root.appendNode("packaging", "aar")
+                            } else {
+                                (nodeList[0] as groovy.util.Node).setValue("aar")
+                            }
+                        }
+                    }
                 }
             }
-            create<MavenPublication>("lite") {
+            create<MavenPublication>("bidscubeSdkFullVideo") {
                 groupId = "com.bidscube"
-                artifactId = "bidscube-sdk-lite"
+                artifactId = "bidscube-sdk-full-video"
                 version = project.version.toString()
-                from(components["noImaRelease"])
+                from(components["fullVideoRelease"])
                 pom {
-                    name.set("Bidscube SDK (lite, no IMA in graph)")
+                    name.set("Bidscube SDK (full video)")
                     description.set(
-                        "Bidscube SDK for Android without Google IMA. Smaller DEX/dependency footprint. " +
-                            "VAST/IMA not included — video APIs fail unless you add the full bidscube-sdk or Google IMA yourself."
+                        "Bidscube Android SDK with Google IMA and AndroidX Media3 for VAST video. " +
+                            "Apps should enable core library desugaring when integrating this artifact " +
+                            "if required by transitive AndroidX / IMA dependencies."
                     )
                     url.set("https://github.com/BidsCube/bidscube-sdk")
-                    appendCommonPom(this)
+                    licenses {
+                        license {
+                            name.set("MIT License")
+                            url.set("https://github.com/BidsCube/bidscube-sdk/blob/main/LICENSE")
+                        }
+                    }
+                    developers {
+                        developer {
+                            id.set("bidscube-team")
+                            name.set("Bidscube Team")
+                            email.set("dev@bidscube.com")
+                            organization.set("Bidscube")
+                            organizationUrl.set("https://bidscube.com")
+                        }
+                    }
+                    scm {
+                        connection.set("scm:git:git://github.com/BidsCube/bidscube-sdk.git")
+                        developerConnection.set("scm:git:ssh://github.com/BidsCube/bidscube-sdk.git")
+                        url.set("https://github.com/BidsCube/bidscube-sdk")
+                    }
+                    withXml {
+                        val root = asNode()
+                        val existing = root.get("packaging")
+                        if (existing == null) {
+                            root.appendNode("packaging", "aar")
+                        } else {
+                            val nodeList = existing as groovy.util.NodeList
+                            if (nodeList.isEmpty()) {
+                                root.appendNode("packaging", "aar")
+                            } else {
+                                (nodeList[0] as groovy.util.Node).setValue("aar")
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -121,68 +231,30 @@ afterEvaluate {
         }
     }
 
-    val validateReleasePublication by tasks.registering {
-        dependsOn("assembleWithImaRelease", "assembleNoImaRelease")
-        dependsOn("generatePomFileForReleasePublication", "generatePomFileForLitePublication")
+    val validateLiteNoVideoPublication by tasks.registering {
+        dependsOn("assembleLiteNoVideoRelease")
+        dependsOn("sourceLiteNoVideoReleaseJar")
+        dependsOn("javaDocLiteNoVideoReleaseJar")
+        dependsOn(tasks.named("generatePomFileForBidscubeSdkLiteNoVideoPublication"))
         doLast {
-            val publishingExt = project.extensions.getByType(PublishingExtension::class.java)
-            fun validate(pubName: String, artId: String) {
-                val pub = publishingExt.publications.getByName(pubName) as MavenPublication
-                val aarArtifacts = pub.artifacts.filter { it.extension == "aar" }
-                if (aarArtifacts.size != 1) {
-                    throw GradleException(
-                        "Publication $pubName must contain exactly one AAR, found ${aarArtifacts.size}. " +
-                            pub.artifacts.joinToString { "${it.classifier ?: "main"}:${it.extension}" }
-                    )
-                }
-                val aarFile = aarArtifacts.single().file
-                if (aarFile == null || !aarFile.exists()) {
-                    throw GradleException("Published AAR file is missing: ${aarFile?.path} ($artId)")
-                }
-            }
-            validate("release", "bidscube-sdk")
-            validate("lite", "bidscube-sdk-lite")
+            validateBidscubePublication("bidscubeSdkLiteNoVideo", "bidscube-sdk-lite-no-video")
         }
     }
 
-    tasks.matching { it.name.startsWith("publish", ignoreCase = true) }.configureEach {
-        dependsOn(validateReleasePublication)
+    val validateFullVideoPublication by tasks.registering {
+        dependsOn("assembleFullVideoRelease")
+        dependsOn("sourceFullVideoReleaseJar")
+        dependsOn("javaDocFullVideoReleaseJar")
+        dependsOn(tasks.named("generatePomFileForBidscubeSdkFullVideoPublication"))
+        doLast {
+            validateBidscubePublication("bidscubeSdkFullVideo", "bidscube-sdk-full-video")
+        }
     }
-}
 
-fun appendCommonPom(pom: org.gradle.api.publish.maven.MavenPom) {
-    pom.licenses {
-        license {
-            name.set("MIT License")
-            url.set("https://github.com/BidsCube/bidscube-sdk/blob/main/LICENSE")
-        }
+    tasks.matching { it.name.startsWith("publishBidscubeSdkLiteNoVideoPublication", ignoreCase = true) }.configureEach {
+        dependsOn(validateLiteNoVideoPublication)
     }
-    pom.developers {
-        developer {
-            id.set("bidscube-team")
-            name.set("Bidscube Team")
-            email.set("dev@bidscube.com")
-            organization.set("Bidscube")
-            organizationUrl.set("https://bidscube.com")
-        }
-    }
-    pom.scm {
-        connection.set("scm:git:git://github.com/BidsCube/bidscube-sdk.git")
-        developerConnection.set("scm:git:ssh://github.com/BidsCube/bidscube-sdk.git")
-        url.set("https://github.com/BidsCube/bidscube-sdk")
-    }
-    pom.withXml {
-        val root = asNode() as groovy.util.Node
-        val existing = root.get("packaging")
-        if (existing == null) {
-            root.appendNode("packaging", "aar")
-        } else {
-            val nodeList = existing as groovy.util.NodeList
-            if (nodeList.isEmpty()) {
-                root.appendNode("packaging", "aar")
-            } else {
-                (nodeList[0] as groovy.util.Node).setValue("aar")
-            }
-        }
+    tasks.matching { it.name.startsWith("publishBidscubeSdkFullVideoPublication", ignoreCase = true) }.configureEach {
+        dependsOn(validateFullVideoPublication)
     }
 }

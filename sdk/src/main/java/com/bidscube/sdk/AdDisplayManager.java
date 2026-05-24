@@ -3,7 +3,9 @@ package com.bidscube.sdk;
 import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Color;
+import android.net.Uri;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -14,10 +16,13 @@ import android.view.WindowManager;
 import android.webkit.WebView;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.VideoView;
 
 import com.bidscube.sdk.ads.AdType;
+import com.bidscube.sdk.ads.VideoAdFormat;
 import com.bidscube.sdk.ads.VideoAdType;
 import com.bidscube.sdk.interfaces.AdCallback;
 import com.bidscube.sdk.models.AdRenderContext;
@@ -30,15 +35,27 @@ import com.bidscube.sdk.network.BidscubeCallback;
 import com.bidscube.sdk.network.BidscubeResponse;
 import com.bidscube.sdk.network.NativeAdParser;
 import com.bidscube.sdk.utils.AdmPayloadUtils;
+import com.bidscube.sdk.utils.VastParser;
 import com.bidscube.sdk.config.VideoPlayerProvider;
 import com.bidscube.sdk.utils.SDKLogger;
 import com.bidscube.sdk.view.BannerViewFactory;
+import com.bidscube.sdk.view.BidscubeVideoAdPlayer;
+import com.bidscube.sdk.view.VideoAdPlayerFactory;
 import com.bidscube.sdk.view.NativeAdView;
 import com.bidscube.sdk.view.NativeAdBinder;
+import com.bumptech.glide.Glide;
+import com.google.android.material.imageview.ShapeableImageView;
+import com.google.android.material.shape.CornerFamily;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.lang.reflect.Field;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -64,18 +81,28 @@ public class AdDisplayManager {
     private static final String TAG = "AdDisplayManager";
 
     private static final int ERROR_VIDEO_ADS_DISABLED = -2;
+    private static final int ERROR_VIDEO_UNSUPPORTED = -3;
 
     private static final String MSG_VIDEO_ADS_DISABLED =
             "Video ads are disabled in SDKConfig (videoAdsEnabled=false). "
                     + "Use SDKConfig.Builder.videoAdsEnabled(true) to enable VAST/IMA playback.";
+    private static final String MSG_VIDEO_UNSUPPORTED =
+            "Video ads are not supported in liteNoVideo artifact";
 
-    final Context context;
-    final DeviceInfo deviceInfo;
-    final VideoPlayerProvider videoPlayerProvider;
+    private enum VideoSessionEnd {
+        NONE,
+        COMPLETED,
+        SKIPPED,
+        FAILED
+    }
+
+    private final Context context;
+    private final DeviceInfo deviceInfo;
+    private final VideoPlayerProvider videoPlayerProvider;
     private final boolean videoAdsEnabled;
 
     private WebView currentBanner = null;
-    VastAdPlayer currentVideoPlayer = null;
+    private BidscubeVideoAdPlayer currentVideoPlayer = null;
     private NativeAdView currentNativeAd = null;
 
     private FrameLayout overlayContainer;
@@ -83,10 +110,7 @@ public class AdDisplayManager {
     private AdPosition currentAdPosition = AdPosition.UNKNOWN;
     private AdPosition responseAdPosition = AdPosition.UNKNOWN;
 
-    public AdDisplayManager(
-            Context context,
-            DeviceInfo deviceInfo,
-            VideoPlayerProvider videoPlayerProvider,
+    public AdDisplayManager(Context context, DeviceInfo deviceInfo, VideoPlayerProvider videoPlayerProvider,
             boolean videoAdsEnabled) {
         this.context = context;
         this.deviceInfo = deviceInfo;
@@ -151,7 +175,7 @@ public class AdDisplayManager {
     /**
      * Allows host app to intercept rendering if their callback opts-in.
      */
-    boolean handleRenderOverride(String placementId,
+    private boolean handleRenderOverride(String placementId,
                                          String adm,
                                          AdPosition position,
                                          AdType.Type renderType,
@@ -162,22 +186,10 @@ public class AdDisplayManager {
         try {
             // sanitize ADM before passing to the host app so wrappers like document.write(...) are removed
             String cleanAdm = sanitizeAdm(adm);
-            // IMAGE creatives often rely on in-markup JS (click beacons, dynamic t=check pixels). Hosts that
-            // override rendering typically use WebView for IMAGE; skip typed NativeAd so adm stays full HTML.
-            NativeAd parsedNative =
-                    renderType == AdType.Type.IMAGE
-                            ? null
-                            : NativeAdParser.parseFromAdm(cleanAdm);
-            AdRenderContext context =
-                    new AdRenderContext(placementId, cleanAdm, position, renderType, parsedNative);
+            AdRenderContext context = new AdRenderContext(placementId, cleanAdm, position, renderType);
             boolean handled = callback.onAdRenderOverride(context);
             if (handled) {
                 SDKLogger.d(TAG, "Render override accepted for placement " + placementId + " (" + renderType + ")");
-                if (parsedNative != null) {
-                    com.bidscube.sdk.network.NativeImpressionTracker.fireIfNeeded(
-                            parsedNative,
-                            "host_render_override_" + renderType.name().toLowerCase(java.util.Locale.US));
-                }
             }
             return handled;
         } catch (Exception e) {
@@ -187,7 +199,7 @@ public class AdDisplayManager {
     }
 
     // Helper to remove common JS wrappers around ADM responses, e.g. document.write('...');
-    String sanitizeAdm(String adm) {
+    private String sanitizeAdm(String adm) {
         if (adm == null) return null;
 
         String current = AdmPayloadUtils.unwrapJsonAdmEnvelope(adm);
@@ -346,7 +358,7 @@ public class AdDisplayManager {
     /**
      * Centers a full screen dialog content
      */
-    void centerFullScreenDialog(Dialog dialog, LinearLayout container) {
+    private void centerFullScreenDialog(Dialog dialog, LinearLayout container) {
 
         container.setGravity(Gravity.CENTER);
 
@@ -361,7 +373,7 @@ public class AdDisplayManager {
     /**
      * Centers a full screen dialog content (FrameLayout version)
      */
-    void centerFullScreenDialog(Dialog dialog, FrameLayout container) {
+    private void centerFullScreenDialog(Dialog dialog, FrameLayout container) {
 
         Window window = dialog.getWindow();
         if (window != null) {
@@ -372,9 +384,36 @@ public class AdDisplayManager {
     }
 
     /**
+     * Configures video player for full screen display
+     */
+    private void configureVideoPlayerForFullScreen(BidscubeVideoAdPlayer videoPlayer) {
+        try {
+
+            Field videoViewField = videoPlayer.getClass().getDeclaredField("videoView");
+            videoViewField.setAccessible(true);
+            VideoView videoView = (VideoView) videoViewField.get(videoPlayer);
+            if (videoView != null) {
+
+                videoView.setScaleX(1.0f);
+                videoView.setScaleY(1.0f);
+
+                FrameLayout.LayoutParams videoParams = new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT);
+                videoParams.gravity = Gravity.CENTER;
+                videoView.setLayoutParams(videoParams);
+
+                SDKLogger.d(TAG, "Video player configured for full screen display");
+            }
+        } catch (Exception e) {
+            SDKLogger.d(TAG, "Could not configure video player scaling: " + e.getMessage());
+        }
+    }
+
+    /**
      * Gets the display name for the current position
      */
-    String getPositionDisplayName() {
+    private String getPositionDisplayName() {
         AdPosition effectivePosition = getEffectiveAdPosition();
         switch (effectivePosition) {
             case ABOVE_THE_FOLD:
@@ -610,25 +649,223 @@ public class AdDisplayManager {
      * Show video ad with display mode determined by response position
      * This method respects the position value from the ad response
      */
-    void showVideoAdWithResponsePosition(String placementId, String url, AdCallback callback) {
-        if (!videoAdsEnabled) {
-            SDKLogger.w(TAG, MSG_VIDEO_ADS_DISABLED);
-            if (callback != null) {
-                callback.onAdFailed(placementId, ERROR_VIDEO_ADS_DISABLED, MSG_VIDEO_ADS_DISABLED);
-            }
+    void showVideoAdWithResponsePosition(String placementId, String url, VideoAdFormat format, AdCallback callback) {
+        if (callback == null) {
             return;
         }
+        Activity activity = resolveActivityContext();
+        if (activity == null) {
+            callback.onAdFailed(placementId, -1, "Context is not an Activity");
+            return;
+        }
+        if (!videoAdsEnabled) {
+            activity.runOnUiThread(() ->
+                    callback.onAdFailed(placementId, ERROR_VIDEO_ADS_DISABLED, MSG_VIDEO_ADS_DISABLED));
+            return;
+        }
+        if (!VideoAdPlayerFactory.isVideoSupported()) {
+            activity.runOnUiThread(() ->
+                    callback.onAdFailed(placementId, ERROR_VIDEO_UNSUPPORTED, MSG_VIDEO_UNSUPPORTED));
+            return;
+        }
+
         HttpProvider.sendGetRequest(url, new BidscubeCallback() {
             @Override
             public void onSuccess(int responseCode, BidscubeResponse responseBody) {
-                AdmImaVast.onVideoAdResponse(AdDisplayManager.this, placementId, responseBody, callback);
+                activity.runOnUiThread(() -> handleVideoAdResponse(placementId, responseBody, format, callback));
             }
 
             @Override
             public void onFail(Exception e) {
-                SDKLogger.e(TAG, "Error loading video ad: " + e.getMessage());
+                activity.runOnUiThread(() -> {
+                    SDKLogger.e(TAG, "Error loading video ad: " + e.getMessage());
+                    String msg = e.getMessage() != null ? e.getMessage() : "network error";
+                    callback.onAdFailed(placementId, -1, msg);
+                });
             }
         });
+    }
+
+    private void handleVideoAdResponse(
+            String placementId,
+            BidscubeResponse responseBody,
+            VideoAdFormat format,
+            AdCallback callback) {
+        try {
+            setResponseAdPosition(responseBody.getPosition());
+            AdPosition effectivePosition = getEffectiveAdPosition();
+
+            SDKLogger.d(TAG, "Video ad response position: " + responseBody.getPosition() + " -> "
+                    + effectivePosition);
+
+            final String adm = sanitizeAdm(responseBody.getAdm());
+
+            if (handleRenderOverride(placementId, adm, effectivePosition, AdType.Type.VIDEO, callback)) {
+                SDKLogger.d(TAG, "Video ad rendering overridden by host app");
+                return;
+            }
+
+            SDKLogger.v("VastResponse", adm);
+            VastParser.analyzeVast(adm);
+            String vastRedirectUrl = VastParser.getClickThroughUrl(adm);
+
+            callback.onAdLoaded(placementId);
+
+            Activity activity = resolveActivityContext();
+            if (activity == null) {
+                callback.onAdFailed(placementId, -1, "Context is not an Activity");
+                return;
+            }
+
+            presentVideoVastInDialog(placementId, adm, vastRedirectUrl, effectivePosition, format, callback, activity);
+        } catch (Exception e) {
+            SDKLogger.e(TAG, "Video ad handling failed: " + e.getMessage());
+            String msg = e.getMessage() != null ? e.getMessage() : "video error";
+            callback.onAdFailed(placementId, -1, msg);
+        }
+    }
+
+    private void presentVideoVastInDialog(
+            String placementId,
+            String adm,
+            String vastRedirectUrl,
+            AdPosition effectivePosition,
+            VideoAdFormat format,
+            AdCallback callback,
+            Activity activity) {
+
+        final AtomicReference<VideoSessionEnd> sessionEnd = new AtomicReference<>(VideoSessionEnd.NONE);
+        final AtomicReference<Boolean> adClosedEmitted = new AtomicReference<>(false);
+
+        Runnable emitAdClosed = () -> {
+            if (adClosedEmitted.compareAndSet(false, true)) {
+                callback.onAdClosed(placementId);
+            }
+        };
+
+        final boolean fullscreen = effectivePosition == AdPosition.FULL_SCREEN;
+        final Dialog dialog;
+        final FrameLayout frameContainer = new FrameLayout(activity);
+        frameContainer.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+
+        if (fullscreen) {
+            dialog = new Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+            SDKLogger.d(TAG, "Response indicates full screen display for video ad");
+        } else {
+            dialog = new Dialog(activity);
+            String positionName = getPositionDisplayName();
+            dialog.setTitle("Video Ad - " + positionName);
+            SDKLogger.d(TAG, "Response indicates windowed display for video ad");
+        }
+
+        BidscubeVideoAdPlayer videoPlayer =
+                VideoAdPlayerFactory.create(activity, adm, vastRedirectUrl, videoPlayerProvider);
+        if (fullscreen) {
+            videoPlayer.setLayoutParams(new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+        } else {
+            int heightPx = (int) TypedValue.applyDimension(
+                    TypedValue.COMPLEX_UNIT_DIP, 300, activity.getResources().getDisplayMetrics());
+            videoPlayer.setLayoutParams(
+                    new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, heightPx));
+        }
+
+        Button closeBtn = new Button(activity);
+        closeBtn.setText("✕");
+        closeBtn.setTextSize(16);
+        closeBtn.setBackgroundColor(0xCCF44336);
+        closeBtn.setTextColor(Color.WHITE);
+        closeBtn.setPadding(12, 6, 12, 6);
+        closeBtn.setOnClickListener(v -> dialog.dismiss());
+
+        FrameLayout.LayoutParams closeBtnParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        closeBtnParams.gravity = Gravity.TOP | Gravity.END;
+        closeBtnParams.setMargins(0, 20, 20, 0);
+        closeBtn.setLayoutParams(closeBtnParams);
+
+        frameContainer.addView(videoPlayer.asViewGroup());
+        frameContainer.addView(closeBtn);
+        dialog.setContentView(frameContainer);
+
+        if (fullscreen) {
+            centerFullScreenDialog(dialog, frameContainer);
+        } else {
+            Window window = dialog.getWindow();
+            if (window != null) {
+                int dialogWidth = (int) (activity.getResources().getDisplayMetrics().widthPixels * 0.8);
+                int dialogHeight = (int) (activity.getResources().getDisplayMetrics().heightPixels * 0.7);
+                positionWindowedDialog(window, dialogWidth, dialogHeight);
+            }
+        }
+
+        videoPlayer.setOnVideoCompletionListener(new BidscubeVideoAdPlayer.VideoCompletionListener() {
+            @Override
+            public void onVideoCompleted() {
+                if (sessionEnd.compareAndSet(VideoSessionEnd.NONE, VideoSessionEnd.COMPLETED)) {
+                    callback.onVideoAdCompleted(placementId);
+                    if (format == VideoAdFormat.REWARDED) {
+                        callback.onUserRewarded(placementId);
+                    }
+                }
+            }
+
+            @Override
+            public void onVideoSkipped() {
+                if (sessionEnd.compareAndSet(VideoSessionEnd.NONE, VideoSessionEnd.SKIPPED)) {
+                    callback.onVideoAdSkipped(placementId);
+                }
+            }
+
+            @Override
+            public void onVideoStarted() {
+                callback.onVideoAdStarted(placementId);
+            }
+
+            @Override
+            public void onVideoClicked() {
+                callback.onAdClicked(placementId);
+            }
+
+            @Override
+            public void onVideoError(String message) {
+                String msg = message != null ? message : "video playback error";
+                if (sessionEnd.compareAndSet(VideoSessionEnd.NONE, VideoSessionEnd.FAILED)) {
+                    callback.onAdFailed(placementId, -1, msg);
+                }
+                if (dialog.isShowing()) {
+                    dialog.dismiss();
+                }
+            }
+        });
+
+        dialog.setOnShowListener(d -> {
+            callback.onAdDisplayed(placementId);
+            videoPlayer.playVast(adm, false);
+        });
+
+        dialog.setOnDismissListener(d -> {
+            VideoSessionEnd end = sessionEnd.get();
+            if (end == VideoSessionEnd.NONE) {
+                sessionEnd.set(VideoSessionEnd.SKIPPED);
+                callback.onVideoAdSkipped(placementId);
+            }
+            try {
+                videoPlayer.release();
+            } catch (Throwable ignored) {
+            }
+            currentVideoPlayer = null;
+            emitAdClosed.run();
+        });
+
+        dialog.show();
+        currentVideoPlayer = videoPlayer;
+
+        SDKLogger.d(TAG, "Video ad dialog shown (fullscreen=" + fullscreen + ")");
     }
 
     /**
@@ -673,12 +910,164 @@ public class AdDisplayManager {
 //     * @param installButtonText Custom text for the install button
 //     */
 
-    public void showSkippableVideoAdFromFile(boolean isFullScreen) {
-        if (!videoAdsEnabled) {
-            SDKLogger.w(TAG, MSG_VIDEO_ADS_DISABLED);
-            return;
+    private String loadVastFromRaw(Context context, int resId) {
+        StringBuilder builder = new StringBuilder();
+        try (InputStream inputStream = context.getResources().openRawResource(resId);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                builder.append(line).append("\n");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
-        AdmImaVast.showSkippableFromFile(this, isFullScreen);
+        return builder.toString();
+    }
+
+
+    public void showSkippableVideoAdFromFile(boolean isFullScreen) {
+        String adm = loadVastFromRaw(context, R.raw.vast);
+        SDKLogger.v("VastResponse", adm);
+        VastParser.analyzeVast(adm);
+        String vastRedirectUrl = VastParser.getClickThroughUrl(adm);
+        String companionImageUrl = VastParser.getCompanionImageUrl(adm);
+
+        Dialog dialog;
+        if (isFullScreen) {
+            dialog = new Dialog(context, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        } else {
+            dialog = new Dialog(context);
+            String positionName = getPositionDisplayName();
+            dialog.setTitle("Skippable Video Ad - " + positionName);
+        }
+
+        FrameLayout mainContainer = new FrameLayout(context);
+        mainContainer.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+
+        BidscubeVideoAdPlayer videoPlayer = VideoAdPlayerFactory.create(context, adm, vastRedirectUrl, videoPlayerProvider);
+        if (isFullScreen) {
+            videoPlayer.setLayoutParams(new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+        } else {
+            int heightPx = (int) TypedValue.applyDimension(
+                    TypedValue.COMPLEX_UNIT_DIP, 300, context.getResources().getDisplayMetrics());
+            videoPlayer.setLayoutParams(new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, heightPx));
+        }
+
+        mainContainer.addView(videoPlayer.asViewGroup());
+        dialog.setContentView(mainContainer);
+        dialog.show();
+
+        videoPlayer.setOnVideoCompletionListener(new BidscubeVideoAdPlayer.VideoCompletionListener() {
+            @Override
+            public void onVideoCompleted() {
+                showFinalAdScreen(videoPlayer, mainContainer, companionImageUrl, vastRedirectUrl);
+            }
+
+            @Override
+            public void onVideoSkipped() {
+                showFinalAdScreen(videoPlayer, mainContainer, companionImageUrl, vastRedirectUrl);
+            }
+        });
+        videoPlayer.playVast(adm, false);
+    }
+
+    private void showFinalAdScreen(BidscubeVideoAdPlayer player, FrameLayout container, String imageUrl, String clickUrl) {
+        player.release();
+
+        final Dialog parentDialog = container.getParent() instanceof Dialog ? (Dialog) container.getParent() : null;
+
+        container.removeAllViews();
+        container.setBackgroundColor(Color.BLACK);
+
+        LinearLayout layout = new LinearLayout(context);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setGravity(Gravity.CENTER_HORIZONTAL);
+        FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        layoutParams.gravity = Gravity.CENTER;
+        layout.setLayoutParams(layoutParams);
+
+        ShapeableImageView adImage = new ShapeableImageView(context);
+        int sizePx = (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, 128, context.getResources().getDisplayMetrics());
+        LinearLayout.LayoutParams imageParams = new LinearLayout.LayoutParams(sizePx, sizePx);
+        imageParams.gravity = Gravity.CENTER_HORIZONTAL;
+        adImage.setLayoutParams(imageParams);
+
+        float cornerRadius = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, 16, context.getResources().getDisplayMetrics());
+        adImage.setShapeAppearanceModel(
+                adImage.getShapeAppearanceModel()
+                        .toBuilder()
+                        .setAllCorners(CornerFamily.ROUNDED, cornerRadius)
+                        .build()
+        );
+
+        if (imageUrl != null && !imageUrl.isEmpty()) {
+            Glide.with(context).load(imageUrl).into(adImage);
+        } else {
+            adImage.setImageResource(android.R.drawable.ic_menu_report_image);
+        }
+
+        Button installBtn = new Button(context);
+        installBtn.setText("Install");
+        installBtn.setTextSize(18);
+        LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        btnParams.gravity = Gravity.CENTER_HORIZONTAL;
+        btnParams.topMargin = (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, 16, context.getResources().getDisplayMetrics());
+        installBtn.setLayoutParams(btnParams);
+
+        installBtn.setOnClickListener(v -> {
+            if (clickUrl != null && !clickUrl.isEmpty()) {
+                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(clickUrl));
+                context.startActivity(intent);
+            }
+        });
+
+        layout.addView(adImage);
+        layout.addView(installBtn);
+        container.addView(layout);
+
+        ImageButton closeBtn = new ImageButton(context);
+        closeBtn.setImageResource(R.drawable.close_small_24);
+        closeBtn.setBackgroundColor(Color.TRANSPARENT);
+        FrameLayout.LayoutParams closeParams = new FrameLayout.LayoutParams(
+                (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 24, context.getResources().getDisplayMetrics()),
+                (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 24, context.getResources().getDisplayMetrics())
+        );
+        closeParams.gravity = Gravity.TOP | Gravity.END;
+        closeParams.setMargins(0, (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 16, context.getResources().getDisplayMetrics()),
+                (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 16, context.getResources().getDisplayMetrics()), 0);
+        closeBtn.setLayoutParams(closeParams);
+
+        closeBtn.setOnClickListener(v -> {
+            if (parentDialog != null) {
+                parentDialog.dismiss();
+            } else {
+                container.removeAllViews();
+            }
+        });
+
+        container.addView(closeBtn);
+    }
+
+    /**
+     * Shows post-video buttons (exit and install) and hides skip button
+     */
+    private void showPostVideoButtons(Button exitBtn, Button installBtn, Button skipBtn) {
+        exitBtn.setVisibility(View.VISIBLE);
+        installBtn.setVisibility(View.VISIBLE);
+        skipBtn.setVisibility(View.GONE);
+        SDKLogger.d(TAG, "Post-video buttons displayed");
     }
 
     /**
@@ -1029,20 +1418,27 @@ public class AdDisplayManager {
      * @param callback Callback for ad events
      * @return View that can be added to any layout
      */
-    public View getVideoAdView(String placementId, String url, AdCallback callback) {
+    public View getVideoAdView(String placementId, String url, VideoAdFormat format, AdCallback callback) {
         SDKLogger.d(TAG, "Getting video ad view for integration: " + url);
 
+        Activity activity = resolveActivityContext();
+        if (activity == null) {
+            if (callback != null) {
+                callback.onAdFailed(placementId, -1, "Context is not an Activity");
+            }
+            return buildSdkErrorTextView("Context is not an Activity");
+        }
         if (!videoAdsEnabled) {
-            SDKLogger.w(TAG, MSG_VIDEO_ADS_DISABLED);
             if (callback != null) {
                 callback.onAdFailed(placementId, ERROR_VIDEO_ADS_DISABLED, MSG_VIDEO_ADS_DISABLED);
             }
-            TextView disabled = new TextView(context);
-            disabled.setText(MSG_VIDEO_ADS_DISABLED);
-            disabled.setTextColor(Color.WHITE);
-            disabled.setPadding(16, 16, 16, 16);
-            disabled.setBackgroundColor(Color.parseColor("#455A64"));
-            return disabled;
+            return buildSdkErrorTextView(MSG_VIDEO_ADS_DISABLED);
+        }
+        if (!VideoAdPlayerFactory.isVideoSupported()) {
+            if (callback != null) {
+                callback.onAdFailed(placementId, ERROR_VIDEO_UNSUPPORTED, MSG_VIDEO_UNSUPPORTED);
+            }
+            return buildSdkErrorTextView(MSG_VIDEO_UNSUPPORTED);
         }
 
         LinearLayout adContainer = new LinearLayout(context);
@@ -1063,21 +1459,119 @@ public class AdDisplayManager {
         sendAdRequest(url, new BidscubeCallback() {
             @Override
             public void onSuccess(int responseCode, BidscubeResponse responseBody) {
-                ((Activity) context).runOnUiThread(() -> {
+                activity.runOnUiThread(() -> {
 
                     setResponseAdPosition(responseBody.getPosition());
 
                     adContainer.removeView(loadingText);
 
+                    if (callback == null) {
+                        return;
+                    }
+
                     try {
-                        if (handleRenderOverride(placementId, responseBody.getAdm(), getEffectiveAdPosition(), AdType.Type.VIDEO, callback)) {
-                            adContainer.removeView(loadingText);
+                        String sanitizedForOverride = sanitizeAdm(responseBody.getAdm());
+                        if (handleRenderOverride(placementId, sanitizedForOverride, getEffectiveAdPosition(),
+                                AdType.Type.VIDEO, callback)) {
                             SDKLogger.d(TAG, "Video ad view rendering overridden by host app");
                             return;
                         }
 
                         final String adm = sanitizeAdm(responseBody.getAdm());
-                        AdmImaVast.appendGetVideoAdView(AdDisplayManager.this, placementId, adm, adContainer, callback);
+                        SDKLogger.v("VastResponse", adm);
+                        VastParser.analyzeVast(adm);
+                        String vastRedirectUrl = VastParser.getClickThroughUrl(adm);
+
+                        final AtomicReference<VideoSessionEnd> sessionEnd =
+                                new AtomicReference<>(VideoSessionEnd.NONE);
+
+                        BidscubeVideoAdPlayer videoPlayer =
+                                VideoAdPlayerFactory.create(context, adm, vastRedirectUrl, videoPlayerProvider);
+                        int heightPx = (int) TypedValue.applyDimension(
+                                TypedValue.COMPLEX_UNIT_DIP, 300, context.getResources().getDisplayMetrics());
+                        videoPlayer.setLayoutParams(new FrameLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT, heightPx));
+
+                        videoPlayer.setOnVideoCompletionListener(new BidscubeVideoAdPlayer.VideoCompletionListener() {
+                            @Override
+                            public void onVideoCompleted() {
+                                if (sessionEnd.compareAndSet(VideoSessionEnd.NONE, VideoSessionEnd.COMPLETED)) {
+                                    callback.onVideoAdCompleted(placementId);
+                                    if (format == VideoAdFormat.REWARDED) {
+                                        callback.onUserRewarded(placementId);
+                                    }
+                                }
+                            }
+
+                            @Override
+                            public void onVideoSkipped() {
+                                if (sessionEnd.compareAndSet(VideoSessionEnd.NONE, VideoSessionEnd.SKIPPED)) {
+                                    callback.onVideoAdSkipped(placementId);
+                                }
+                            }
+
+                            @Override
+                            public void onVideoStarted() {
+                                callback.onVideoAdStarted(placementId);
+                            }
+
+                            @Override
+                            public void onVideoClicked() {
+                                callback.onAdClicked(placementId);
+                            }
+
+                            @Override
+                            public void onVideoError(String message) {
+                                String msg = message != null ? message : "video playback error";
+                                if (sessionEnd.compareAndSet(VideoSessionEnd.NONE, VideoSessionEnd.FAILED)) {
+                                    callback.onAdFailed(placementId, -1, msg);
+                                }
+                            }
+                        });
+
+                        Button playButton = new Button(context);
+                        playButton.setText("▶ PLAY VIDEO AD");
+                        playButton.setTextSize(16);
+                        playButton.setBackgroundColor(Color.parseColor("#FF5722"));
+                        playButton.setTextColor(Color.WHITE);
+                        playButton.setPadding(16, 8, 16, 8);
+                        playButton.setOnClickListener(v -> {
+                            videoPlayer.playVast(adm, false);
+                            playButton.setVisibility(View.GONE);
+                        });
+
+                        adContainer.addView(videoPlayer.asViewGroup());
+                        adContainer.addView(playButton);
+
+                        callback.onAdLoaded(placementId);
+                        adContainer.post(() -> callback.onAdDisplayed(placementId));
+
+                        final boolean[] detachHandled = {false};
+                        adContainer.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                            @Override
+                            public void onViewAttachedToWindow(View v) {
+                            }
+
+                            @Override
+                            public void onViewDetachedFromWindow(View v) {
+                                if (detachHandled[0]) {
+                                    return;
+                                }
+                                detachHandled[0] = true;
+                                try {
+                                    videoPlayer.release();
+                                } catch (Throwable ignored) {
+                                }
+                                VideoSessionEnd end = sessionEnd.get();
+                                if (end == VideoSessionEnd.NONE) {
+                                    sessionEnd.set(VideoSessionEnd.SKIPPED);
+                                    callback.onVideoAdSkipped(placementId);
+                                }
+                                callback.onAdClosed(placementId);
+                            }
+                        });
+
+                        SDKLogger.d(TAG, "Video ad view created and integrated into container");
 
                     } catch (Exception e) {
                         SDKLogger.e(TAG, "Error creating video ad view: " + e.getMessage());
@@ -1088,16 +1582,14 @@ public class AdDisplayManager {
                         errorText.setGravity(Gravity.CENTER);
                         adContainer.addView(errorText);
 
-                        if (callback != null) {
-                            callback.onAdFailed(placementId, -1, e.getMessage());
-                        }
+                        callback.onAdFailed(placementId, -1, e.getMessage());
                     }
                 });
             }
 
             @Override
             public void onFail(Exception e) {
-                ((Activity) context).runOnUiThread(() -> {
+                activity.runOnUiThread(() -> {
 
                     adContainer.removeView(loadingText);
 
@@ -1118,6 +1610,15 @@ public class AdDisplayManager {
         });
 
         return adContainer;
+    }
+
+    private TextView buildSdkErrorTextView(String message) {
+        TextView tv = new TextView(context);
+        tv.setText(message);
+        tv.setTextColor(Color.WHITE);
+        tv.setPadding(16, 16, 16, 16);
+        tv.setBackgroundColor(Color.parseColor("#B00020"));
+        return tv;
     }
 
     /**

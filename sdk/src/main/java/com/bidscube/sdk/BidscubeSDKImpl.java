@@ -15,8 +15,10 @@ import com.bidscube.sdk.interfaces.IBidscubeSDK;
 import com.bidscube.sdk.models.DeviceInfo;
 import com.bidscube.sdk.models.enums.AdPosition;
 import com.bidscube.sdk.ads.ImageAdType;
-import com.bidscube.sdk.ads.VideoAdType;
 import com.bidscube.sdk.ads.NativeAdType;
+import com.bidscube.sdk.ads.VideoAdFormat;
+import com.bidscube.sdk.ads.VideoAdType;
+import com.bidscube.sdk.view.VideoAdPlayerFactory;
 import com.bidscube.sdk.utils.SDKLogger;
 
 /**
@@ -30,9 +32,15 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
 
     private static final int ERROR_VIDEO_ADS_DISABLED = -2;
 
+    /** Video APIs used from the liteNoVideo artifact (no IMA / Media3 on classpath). */
+    public static final int ERROR_VIDEO_UNSUPPORTED = -3;
+
     private static final String MSG_VIDEO_ADS_DISABLED =
             "Video ads are disabled in SDKConfig (videoAdsEnabled=false). "
                     + "Use SDKConfig.Builder.videoAdsEnabled(true) to enable VAST/IMA playback.";
+
+    private static final String MSG_VIDEO_UNSUPPORTED =
+            "Video ads are not supported in liteNoVideo artifact";
 
     private Context context;
     private SDKConfig config;
@@ -112,34 +120,45 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
 
     @Override
     public void showVideoAd(String placementId, AdCallback callback) {
+        showInterstitialVideoAd(placementId, callback);
+    }
+
+    @Override
+    public void showInterstitialVideoAd(String placementId, AdCallback callback) {
+        showVideoInternal(placementId, callback, VideoAdFormat.INTERSTITIAL);
+    }
+
+    @Override
+    public void showRewardedVideoAd(String placementId, AdCallback callback) {
+        showVideoInternal(placementId, callback, VideoAdFormat.REWARDED);
+    }
+
+    private void showVideoInternal(String placementId, AdCallback callback, VideoAdFormat format) {
         checkInitialization();
-        if (!config.isVideoAdsEnabled()) {
-            SDKLogger.w(TAG, MSG_VIDEO_ADS_DISABLED);
-            if (callback != null) {
-                callback.onAdFailed(placementId, ERROR_VIDEO_ADS_DISABLED, MSG_VIDEO_ADS_DISABLED);
-            }
+        if (callback == null) {
             return;
         }
-        if (callback != null)
-            callback.onAdLoading(placementId);
+        if (!config.isVideoAdsEnabled()) {
+            SDKLogger.w(TAG, MSG_VIDEO_ADS_DISABLED);
+            callback.onAdFailed(placementId, ERROR_VIDEO_ADS_DISABLED, MSG_VIDEO_ADS_DISABLED);
+            return;
+        }
+        if (!VideoAdPlayerFactory.isVideoSupported()) {
+            SDKLogger.w(TAG, MSG_VIDEO_UNSUPPORTED);
+            callback.onAdFailed(placementId, ERROR_VIDEO_UNSUPPORTED, MSG_VIDEO_UNSUPPORTED);
+            return;
+        }
+        callback.onAdLoading(placementId);
 
         try {
             VideoAdType videoAdType = new VideoAdType(placementId);
             String url = videoAdType.buildRequestUrl(deviceInfo).toString();
 
-            adDisplayManager.showVideoAdWithResponsePosition(placementId, url, callback);
-
-            if (callback != null) {
-                callback.onAdLoaded(placementId);
-                callback.onAdDisplayed(placementId);
-                callback.onVideoAdStarted(placementId);
-            }
+            adDisplayManager.showVideoAdWithResponsePosition(placementId, url, format, callback);
 
         } catch (Exception e) {
             SDKLogger.e(TAG, "Failed to show video ad: " + e.getMessage(), e);
-            if (callback != null) {
-                callback.onAdFailed(placementId, -1, "Failed to show video ad: " + e.getMessage());
-            }
+            callback.onAdFailed(placementId, -1, "Failed to show video ad: " + e.getMessage());
         }
     }
 
@@ -153,8 +172,9 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             }
             return;
         }
-        if (callback != null)
+        if (callback != null) {
             callback.onAdLoading(placementId);
+        }
 
         try {
 
@@ -168,11 +188,7 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
                 //adDisplayManager.showSkippableVideoAdWindowed(installButtonText);
             }
 
-            if (callback != null) {
-                callback.onAdLoaded(placementId);
-                callback.onAdDisplayed(placementId);
-                callback.onVideoAdStarted(placementId);
-            }
+            // Test / file-based flow: callbacks are not wired to IMA lifecycle here.
 
         } catch (Exception e) {
             SDKLogger.e(TAG, "Failed to show skippable video ad: " + e.getMessage(), e);
@@ -275,22 +291,21 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
             }
             return createErrorView(MSG_VIDEO_ADS_DISABLED);
         }
-        if (callback != null)
+        if (!VideoAdPlayerFactory.isVideoSupported()) {
+            if (callback != null) {
+                callback.onAdFailed(placementId, ERROR_VIDEO_UNSUPPORTED, MSG_VIDEO_UNSUPPORTED);
+            }
+            return createErrorView(MSG_VIDEO_UNSUPPORTED);
+        }
+        if (callback != null) {
             callback.onAdLoading(placementId);
+        }
 
         try {
             VideoAdType videoAdType = new VideoAdType(placementId);
             String url = videoAdType.buildRequestUrl(deviceInfo).toString();
 
-            View adView = adDisplayManager.getVideoAdView(placementId, url, callback);
-
-            if (callback != null) {
-                callback.onAdLoaded(placementId);
-                callback.onAdDisplayed(placementId);
-                callback.onVideoAdStarted(placementId);
-            }
-
-            return adView;
+            return adDisplayManager.getVideoAdView(placementId, url, VideoAdFormat.INTERSTITIAL, callback);
 
         } catch (Exception e) {
             SDKLogger.e(TAG, "Failed to get video ad view: " + e.getMessage(), e);

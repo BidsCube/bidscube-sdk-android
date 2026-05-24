@@ -29,10 +29,10 @@ repositories {
 
 dependencies {
     // Request the AAR artifact explicitly. Use this when the repository exposes the SDK as an AAR
-    implementation("com.bidscube:bidscube-sdk:1.2.3@aar")
+    implementation("com.bidscube:bidscube-sdk:1.2.4@aar")
 
     // If the artifact is published with proper AAR packaging Gradle will normally resolve it
-    // implementation("com.bidscube:bidscube-sdk:1.2.3")
+    // implementation("com.bidscube:bidscube-sdk:1.2.4")
 }
 ```
 
@@ -47,8 +47,8 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.bidscube:bidscube-sdk:1.2.3'
-    // or force AAR: implementation 'com.bidscube:bidscube-sdk:1.2.3@aar'
+    implementation 'com.bidscube:bidscube-sdk:1.2.4'
+    // or force AAR: implementation 'com.bidscube:bidscube-sdk:1.2.4@aar'
 }
 ```
 
@@ -548,7 +548,12 @@ This SDK is protected under the MIT License. For full license terms, please refe
 
 ## Version
 
-This README and examples are updated for Bidscube SDK version 1.2.3.
+This README and examples are updated for Bidscube SDK version 1.2.4.
+
+## What's new in 1.2.4 (user-facing)
+
+- Version bump and release hygiene: BOM `bom/pom.xml`, `gradle.properties` `bidscube.version`, and runtime default in `SDKConfig` aligned to **1.2.4**.
+- CI publish step aligned with Gradle: use `publishAllPublicationsToDistRepository` (lite + full-video AARs to `build/maven-repo`).
 
 ## What's new in 1.2.3 (user-facing)
 

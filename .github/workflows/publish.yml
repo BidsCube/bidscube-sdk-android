@@ -142,9 +142,9 @@ jobs:
           BidscubeVersion: ${{ env.BidscubeVersion }}
         run: |
           if [ -f "./gradlew" ]; then
-            ./gradlew clean :sdk:publishReleasePublicationToDistRepository --no-daemon --stacktrace
+            ./gradlew clean :sdk:publishAllPublicationsToDistRepository --no-daemon --stacktrace
           else
-            gradle clean :sdk:publishReleasePublicationToDistRepository --no-daemon --stacktrace
+            gradle clean :sdk:publishAllPublicationsToDistRepository --no-daemon --stacktrace
           fi
 
       - name: Verify built artifacts
@@ -179,7 +179,7 @@ jobs:
 
           MAVEN="${GITHUB_WORKSPACE}/build/maven-repo"
           if [ ! -d "$MAVEN" ]; then
-            echo "Error: expected Maven layout at $MAVEN after publishReleasePublicationToDistRepository"
+            echo "Error: expected Maven layout at $MAVEN after publishAllPublicationsToDistRepository"
             exit 1
           fi
           echo "Maven repo layout present under build/maven-repo"

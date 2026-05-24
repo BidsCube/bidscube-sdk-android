@@ -7,12 +7,14 @@ import android.util.AttributeSet;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import com.bidscube.sdk.utils.SDKLogger;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.VideoView;
 
-import com.bidscube.sdk.VastAdPlayer;
+import androidx.media3.common.util.UnstableApi;
+
 import com.bidscube.sdk.config.VideoPlayerProvider;
 import com.bidscube.sdk.adapters.VideoAdPlayerAdapter;
 import com.google.ads.interactivemedia.v3.api.AdDisplayContainer;
@@ -24,16 +26,8 @@ import com.google.ads.interactivemedia.v3.api.ImaSdkSettings;
 import com.google.ads.interactivemedia.v3.api.player.VideoAdPlayer;
 
 @SuppressLint("ViewConstructor")
-public class IMAPlayerHandler extends FrameLayout implements VastAdPlayer {
-
-    /**
-     * Interface for video completion callbacks
-     */
-    public interface OnVideoCompletionListener {
-        void onVideoCompleted();
-
-        void onVideoSkipped();
-    }
+@UnstableApi
+public class IMAPlayerHandler extends FrameLayout implements BidscubeVideoAdPlayer {
 
     private ImaSdkFactory sdkFactory;
     private AdsLoader adsLoader;
@@ -43,7 +37,7 @@ public class IMAPlayerHandler extends FrameLayout implements VastAdPlayer {
     private final String eventsTag = "IMAevent";
     private final String vastUrl;
     private final String redirectUrl;
-    private OnVideoCompletionListener completionListener;
+    private BidscubeVideoAdPlayer.VideoCompletionListener completionListener;
     private boolean isVideoPlaying = false;
 
     private final VideoPlayerProvider videoPlayerProvider;
@@ -100,6 +94,14 @@ public class IMAPlayerHandler extends FrameLayout implements VastAdPlayer {
 
         ImaSdkSettings imaSdkSettings = sdkFactory.createImaSdkSettings();
         adsLoader = sdkFactory.createAdsLoader(context, imaSdkSettings, adDisplayContainer);
+
+        adsLoader.addAdErrorListener(errorEvent -> {
+            String msg = errorEvent.getError() != null ? errorEvent.getError().getMessage() : "unknown ad error";
+            SDKLogger.e("IMAPlayerHandler", "Ad error: " + msg);
+            if (completionListener != null) {
+                completionListener.onVideoError(msg);
+            }
+        });
     }
 
     /**
@@ -110,12 +112,18 @@ public class IMAPlayerHandler extends FrameLayout implements VastAdPlayer {
 
             setOnClickListener(v -> {
                 SDKLogger.d("IMAPlayerHandler", "Video player clicked - opening: " + redirectUrl);
+                if (completionListener != null) {
+                    completionListener.onVideoClicked();
+                }
                 openUrlInBrowser(redirectUrl);
             });
 
             if (videoView != null) {
                 videoView.setOnClickListener(v -> {
                     SDKLogger.d("IMAPlayerHandler", "VideoView clicked - opening: " + redirectUrl);
+                    if (completionListener != null) {
+                        completionListener.onVideoClicked();
+                    }
                     openUrlInBrowser(redirectUrl);
                 });
             }
@@ -147,6 +155,7 @@ public class IMAPlayerHandler extends FrameLayout implements VastAdPlayer {
         }
     }
 
+    @Override
     public void playVast(String vastTag, boolean isUrl) {
         AdsRequest request = sdkFactory.createAdsRequest();
 
@@ -169,6 +178,9 @@ public class IMAPlayerHandler extends FrameLayout implements VastAdPlayer {
                     case LOADED:
                         SDKLogger.d(eventsTag, "Ad loaded");
                         isVideoPlaying = true;
+                        if (completionListener != null) {
+                            completionListener.onVideoLoaded();
+                        }
 
                         postDelayed(() -> {
                             if (skipButton != null) {
@@ -180,10 +192,16 @@ public class IMAPlayerHandler extends FrameLayout implements VastAdPlayer {
                     case STARTED:
                         SDKLogger.d(eventsTag, "Ad started");
                         isVideoPlaying = true;
+                        if (completionListener != null) {
+                            completionListener.onVideoStarted();
+                        }
                         break;
 
                     case CLICKED:
                         SDKLogger.d(eventsTag, "Ad click-through URL clicked");
+                        if (completionListener != null) {
+                            completionListener.onVideoClicked();
+                        }
 
                         break;
 
@@ -222,6 +240,7 @@ public class IMAPlayerHandler extends FrameLayout implements VastAdPlayer {
     /**
      * Skips the current video ad
      */
+    @Override
     public void skipVideo() {
         if (adsManager != null && isVideoPlaying) {
             try {
@@ -265,8 +284,14 @@ public class IMAPlayerHandler extends FrameLayout implements VastAdPlayer {
      *
      * @param listener The listener to be called when video completes
      */
-    public void setOnVideoCompletionListener(OnVideoCompletionListener listener) {
+    @Override
+    public void setOnVideoCompletionListener(BidscubeVideoAdPlayer.VideoCompletionListener listener) {
         this.completionListener = listener;
+    }
+
+    @Override
+    public ViewGroup asViewGroup() {
+        return this;
     }
 
     @Override

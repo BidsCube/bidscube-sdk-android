@@ -20,6 +20,9 @@ public interface BidscubeVideoAdPlayer {
         default void onVideoClicked() {}
 
         default void onVideoError(String message) {}
+
+        /** Fired when a skippable ad becomes eligible to skip (IMA SKIPPABLE_STATE_CHANGED). */
+        default void onVideoSkippable() {}
     }
 
     void setLayoutParams(ViewGroup.LayoutParams params);

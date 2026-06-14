@@ -8,22 +8,25 @@ import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import com.bidscube.sdk.utils.SDKLogger;
-import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.TextView;
 import android.widget.VideoView;
 
 import androidx.media3.common.util.UnstableApi;
 
 import com.bidscube.sdk.config.VideoPlayerProvider;
 import com.bidscube.sdk.adapters.VideoAdPlayerAdapter;
+import com.bidscube.sdk.utils.SDKLogger;
 import com.google.ads.interactivemedia.v3.api.AdDisplayContainer;
 import com.google.ads.interactivemedia.v3.api.AdsLoader;
 import com.google.ads.interactivemedia.v3.api.AdsManager;
+import com.google.ads.interactivemedia.v3.api.AdsRenderingSettings;
 import com.google.ads.interactivemedia.v3.api.AdsRequest;
 import com.google.ads.interactivemedia.v3.api.ImaSdkFactory;
 import com.google.ads.interactivemedia.v3.api.ImaSdkSettings;
 import com.google.ads.interactivemedia.v3.api.player.VideoAdPlayer;
+
+import java.util.Collections;
 
 @SuppressLint("ViewConstructor")
 @UnstableApi
@@ -33,7 +36,6 @@ public class IMAPlayerHandler extends FrameLayout implements BidscubeVideoAdPlay
     private AdsLoader adsLoader;
     private AdsManager adsManager;
     private VideoView videoView;
-    private Button skipButton;
     private final String eventsTag = "IMAevent";
     private final String vastUrl;
     private final String redirectUrl;
@@ -84,53 +86,140 @@ public class IMAPlayerHandler extends FrameLayout implements BidscubeVideoAdPlay
         setBackgroundColor(android.graphics.Color.BLACK);
 
         addView(videoView);
+        setOnHierarchyChangeListener(new OnHierarchyChangeListener() {
+            @Override
+            public void onChildViewAdded(View parent, View child) {
+                if (isVideoPlaying) {
+                    hideNativeSkipUiInTree(IMAPlayerHandler.this);
+                }
+            }
+
+            @Override
+            public void onChildViewRemoved(View parent, View child) {
+                // No-op.
+            }
+        });
 
         VideoAdPlayer videoAdPlayerAdapter = new VideoAdPlayerAdapter(videoView, audioManager);
         AdDisplayContainer adDisplayContainer = ImaSdkFactory.createAdDisplayContainer(this, videoAdPlayerAdapter);
 
-        setupClickToOpenUrl(redirectUrl);
-
         sdkFactory = ImaSdkFactory.getInstance();
+        ImaSdkBootstrap.initialize(context);
 
         ImaSdkSettings imaSdkSettings = sdkFactory.createImaSdkSettings();
         adsLoader = sdkFactory.createAdsLoader(context, imaSdkSettings, adDisplayContainer);
 
         adsLoader.addAdErrorListener(errorEvent -> {
             String msg = errorEvent.getError() != null ? errorEvent.getError().getMessage() : "unknown ad error";
-            SDKLogger.e("IMAPlayerHandler", "Ad error: " + msg);
+            SDKLogger.e("IMAPlayerHandler", "AdsLoader error: " + msg);
             if (completionListener != null) {
                 completionListener.onVideoError(msg);
             }
         });
+
+        adsLoader.addAdsLoadedListener(adsManagerLoadedEvent -> {
+            adsManager = adsManagerLoadedEvent.getAdsManager();
+            adsManager.addAdErrorListener(errorEvent -> {
+                String msg = errorEvent.getError() != null ? errorEvent.getError().getMessage() : "unknown ad error";
+                SDKLogger.e("IMAPlayerHandler", "AdsManager error: " + msg);
+                if (completionListener != null) {
+                    completionListener.onVideoError(msg);
+                }
+            });
+            AdsRenderingSettings renderingSettings = sdkFactory.createAdsRenderingSettings();
+            renderingSettings.setUiElements(Collections.emptySet());
+            renderingSettings.setDisableUi(true);
+            adsManager.init(renderingSettings);
+            adsManager.addAdEventListener(this::handleAdEvent);
+            adsManager.start();
+        });
     }
 
-    /**
-     * Sets up click listener to open the redirect URL when video player is clicked
-     */
-    private void setupClickToOpenUrl(String redirectUrl) {
-        try {
+    private void handleAdEvent(com.google.ads.interactivemedia.v3.api.AdEvent adEvent) {
+        SDKLogger.d("IMAPlayerHandler", "Ad event: " + adEvent.getType());
 
-            setOnClickListener(v -> {
-                SDKLogger.d("IMAPlayerHandler", "Video player clicked - opening: " + redirectUrl);
+        switch (adEvent.getType()) {
+            case LOADED:
+                SDKLogger.d(eventsTag, "Ad loaded");
+                isVideoPlaying = true;
+                if (completionListener != null) {
+                    completionListener.onVideoLoaded();
+                }
+                break;
+
+            case STARTED:
+                SDKLogger.d(eventsTag, "Ad started");
+                isVideoPlaying = true;
+                hideNativeSkipUiInTree(this);
+                if (completionListener != null) {
+                    completionListener.onVideoStarted();
+                }
+                break;
+
+            case CLICKED:
+                SDKLogger.d(eventsTag, "Ad click-through URL clicked");
                 if (completionListener != null) {
                     completionListener.onVideoClicked();
                 }
-                openUrlInBrowser(redirectUrl);
-            });
-
-            if (videoView != null) {
-                videoView.setOnClickListener(v -> {
-                    SDKLogger.d("IMAPlayerHandler", "VideoView clicked - opening: " + redirectUrl);
-                    if (completionListener != null) {
-                        completionListener.onVideoClicked();
-                    }
+                if (redirectUrl != null && !redirectUrl.isEmpty()) {
                     openUrlInBrowser(redirectUrl);
-                });
-            }
+                }
+                break;
 
-            SDKLogger.d("IMAPlayerHandler", "Click listener set up to open: " + redirectUrl);
-        } catch (Exception e) {
-            SDKLogger.e("IMAPlayerHandler", "Error setting up click listener: " + e.getMessage());
+            case COMPLETED:
+                SDKLogger.d(eventsTag, "Ad completed");
+                isVideoPlaying = false;
+                if (completionListener != null) {
+                    completionListener.onVideoCompleted();
+                }
+                break;
+
+            case SKIPPED:
+                SDKLogger.d(eventsTag, "Ad skipped");
+                isVideoPlaying = false;
+                if (completionListener != null) {
+                    completionListener.onVideoSkipped();
+                }
+                break;
+
+            case SKIPPABLE_STATE_CHANGED:
+                SDKLogger.d(eventsTag, "Ad skippable state changed");
+                hideNativeSkipUiInTree(this);
+                if (completionListener != null) {
+                    completionListener.onVideoSkippable();
+                }
+                break;
+
+            default:
+                SDKLogger.d(eventsTag, "Other ad event: " + adEvent.getType());
+                break;
+        }
+    }
+
+    private static void hideNativeSkipUiInTree(View root) {
+        if (!(root instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) root;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child instanceof TextView) {
+                CharSequence text = ((TextView) child).getText();
+                if (text != null && text.toString().toLowerCase().contains("skip")) {
+                    child.setVisibility(GONE);
+                }
+            }
+            String resourceName = null;
+            try {
+                if (child.getId() != View.NO_ID) {
+                    resourceName = child.getResources().getResourceEntryName(child.getId()).toLowerCase();
+                }
+            } catch (Throwable ignored) {
+            }
+            if (resourceName != null && resourceName.contains("skip")) {
+                child.setVisibility(GONE);
+            }
+            hideNativeSkipUiInTree(child);
         }
     }
 
@@ -157,6 +246,22 @@ public class IMAPlayerHandler extends FrameLayout implements BidscubeVideoAdPlay
 
     @Override
     public void playVast(String vastTag, boolean isUrl) {
+        if (adsLoader == null || sdkFactory == null) {
+            SDKLogger.e("IMAPlayerHandler", "playVast called before IMA init completed");
+            if (completionListener != null) {
+                completionListener.onVideoError("IMA not initialized");
+            }
+            return;
+        }
+
+        if (adsManager != null) {
+            try {
+                adsManager.destroy();
+            } catch (Throwable ignored) {
+            }
+            adsManager = null;
+        }
+
         AdsRequest request = sdkFactory.createAdsRequest();
 
         if (isUrl) {
@@ -166,73 +271,6 @@ public class IMAPlayerHandler extends FrameLayout implements BidscubeVideoAdPlay
             request.setAdsResponse(vastTag);
             Log.i("VASTTag", "Playing VAST from String response " + vastTag);
         }
-
-        adsLoader.addAdsLoadedListener(adsManagerLoadedEvent -> {
-            adsManager = adsManagerLoadedEvent.getAdsManager();
-            adsManager.init();
-
-            adsManager.addAdEventListener(adEvent -> {
-                SDKLogger.d("IMAPlayerHandler", "Ad event: " + adEvent.getType());
-
-                switch (adEvent.getType()) {
-                    case LOADED:
-                        SDKLogger.d(eventsTag, "Ad loaded");
-                        isVideoPlaying = true;
-                        if (completionListener != null) {
-                            completionListener.onVideoLoaded();
-                        }
-
-                        postDelayed(() -> {
-                            if (skipButton != null) {
-                                skipButton.setVisibility(View.VISIBLE);
-                            }
-                        }, 2000);
-                        break;
-
-                    case STARTED:
-                        SDKLogger.d(eventsTag, "Ad started");
-                        isVideoPlaying = true;
-                        if (completionListener != null) {
-                            completionListener.onVideoStarted();
-                        }
-                        break;
-
-                    case CLICKED:
-                        SDKLogger.d(eventsTag, "Ad click-through URL clicked");
-                        if (completionListener != null) {
-                            completionListener.onVideoClicked();
-                        }
-
-                        break;
-
-                    case COMPLETED:
-                        SDKLogger.d(eventsTag, "Ad completed");
-                        isVideoPlaying = false;
-                        hideSkipButton();
-
-                        if (completionListener != null) {
-                            completionListener.onVideoCompleted();
-                        }
-                        break;
-
-                    case SKIPPED:
-                        SDKLogger.d(eventsTag, "Ad skipped");
-                        isVideoPlaying = false;
-                        hideSkipButton();
-
-                        if (completionListener != null) {
-                            completionListener.onVideoSkipped();
-                        }
-                        break;
-
-                    default:
-                        SDKLogger.d(eventsTag, "Other ad event: " + adEvent.getType());
-                        break;
-                }
-            });
-
-            adsManager.start();
-        });
 
         adsLoader.requestAds(request);
     }
@@ -247,35 +285,15 @@ public class IMAPlayerHandler extends FrameLayout implements BidscubeVideoAdPlay
                 SDKLogger.d("IMAPlayerHandler", "Attempting to skip video ad");
                 adsManager.skip();
                 isVideoPlaying = false;
-                hideSkipButton();
-
-                if (completionListener != null) {
-                    completionListener.onVideoSkipped();
-                }
-
-                SDKLogger.d("IMAPlayerHandler", "Video ad skipped successfully");
+                SDKLogger.d("IMAPlayerHandler", "Video ad skip requested");
             } catch (Exception e) {
                 SDKLogger.e("IMAPlayerHandler", "Error skipping video ad: " + e.getMessage());
-
                 if (completionListener != null) {
                     completionListener.onVideoSkipped();
                 }
             }
         } else {
             Log.w("IMAPlayerHandler", "Cannot skip video - adsManager is null or video not playing");
-
-            if (completionListener != null) {
-                completionListener.onVideoSkipped();
-            }
-        }
-    }
-
-    /**
-     * Hides the skip button
-     */
-    private void hideSkipButton() {
-        if (skipButton != null) {
-            skipButton.setVisibility(View.GONE);
         }
     }
 

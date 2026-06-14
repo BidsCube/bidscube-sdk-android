@@ -31,6 +31,18 @@
                         </MediaFiles>
                     </Linear>
                 </Creative>
+                <Creative sequence="2">
+                    <CompanionAds>
+                        <Companion width="1280" height="720">
+                            <StaticResource creativeType="image/jpeg">
+                                <![CDATA[https://storage.googleapis.com/gvabox/media/images/big_buck_bunny.jpg]]>
+                            </StaticResource>
+                            <CompanionClickThrough>
+                                <![CDATA[https://example.com/endcard-click]]>
+                            </CompanionClickThrough>
+                        </Companion>
+                    </CompanionAds>
+                </Creative>
             </Creatives>
         </InLine>
     </Ad>

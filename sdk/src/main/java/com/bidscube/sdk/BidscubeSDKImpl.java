@@ -19,6 +19,7 @@ import com.bidscube.sdk.ads.NativeAdType;
 import com.bidscube.sdk.ads.VideoAdFormat;
 import com.bidscube.sdk.ads.VideoAdType;
 import com.bidscube.sdk.view.VideoAdPlayerFactory;
+import com.bidscube.sdk.view.ImaSdkBootstrap;
 import com.bidscube.sdk.utils.SDKLogger;
 
 /**
@@ -63,6 +64,10 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
         // Configure logging based on SDKConfig
         SDKLogger.setLoggingEnabled(config.isEnableLogging());
         SDKLogger.setDefaultTag(TAG);
+
+        if (config.isVideoAdsEnabled()) {
+            ImaSdkBootstrap.initialize(context);
+        }
 
         try {
 

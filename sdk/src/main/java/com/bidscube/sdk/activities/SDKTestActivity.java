@@ -674,6 +674,12 @@ public class SDKTestActivity extends Activity {
             }
 
             @Override
+            public void onEndCardShown(String placementId) {
+                SDKLogger.d(TAG, "End card shown: " + placementId);
+                Toast.makeText(SDKTestActivity.this, "End card displayed", Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
             public void onInstallButtonClicked(String placementId, String buttonText) {
                 SDKLogger.d(TAG, "Install button clicked: " + placementId + " - " + buttonText);
                 Toast.makeText(SDKTestActivity.this, "Install button clicked: " + buttonText, Toast.LENGTH_SHORT)

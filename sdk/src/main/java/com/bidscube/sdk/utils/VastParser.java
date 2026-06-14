@@ -279,4 +279,91 @@ public class VastParser {
         return null;
     }
 
+    /**
+     * Returns companion/end-card click-through URL, falling back to video click-through.
+     */
+    public static String getCompanionClickThroughUrl(String vastXml) {
+        if (vastXml == null || vastXml.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder builder = factory.newDocumentBuilder();
+            InputSource is = new InputSource(new StringReader(vastXml));
+            Document doc = builder.parse(is);
+            doc.getDocumentElement().normalize();
+
+            NodeList companionList = doc.getElementsByTagName("Companion");
+            if (companionList.getLength() > 0) {
+                Element companion = (Element) companionList.item(0);
+                NodeList clickThroughNodes = companion.getElementsByTagName("CompanionClickThrough");
+                if (clickThroughNodes.getLength() > 0) {
+                    String url = clickThroughNodes.item(0).getTextContent();
+                    if (url != null && !url.trim().isEmpty()) {
+                        return url.trim();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error parsing companion click-through: " + e.getMessage());
+        }
+        return getClickThroughUrl(vastXml);
+    }
+
+    /**
+     * Parses VAST {@code skipoffset} on the first {@code Linear} element.
+     *
+     * @return skip delay in seconds, or {@code 0} when the ad is not skippable
+     */
+    public static int getSkipOffsetSeconds(String vastXml) {
+        if (vastXml == null || vastXml.trim().isEmpty()) {
+            return 0;
+        }
+        try {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder builder = factory.newDocumentBuilder();
+            InputSource is = new InputSource(new StringReader(vastXml));
+            Document doc = builder.parse(is);
+            NodeList linearNodes = doc.getElementsByTagName("Linear");
+            if (linearNodes.getLength() == 0) {
+                return 0;
+            }
+            Element linear = (Element) linearNodes.item(0);
+            String skipOffset = linear.getAttribute("skipoffset");
+            if (skipOffset == null || skipOffset.trim().isEmpty()) {
+                return 0;
+            }
+            return parseVastDurationToSeconds(skipOffset.trim());
+        } catch (Exception e) {
+            System.err.println("Error parsing skipoffset: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    private static int parseVastDurationToSeconds(String value) {
+        if (value.contains(":")) {
+            String[] parts = value.split(":");
+            try {
+                if (parts.length == 3) {
+                    int hours = Integer.parseInt(parts[0]);
+                    int minutes = Integer.parseInt(parts[1]);
+                    int seconds = (int) Math.floor(Double.parseDouble(parts[2]));
+                    return hours * 3600 + minutes * 60 + seconds;
+                }
+                if (parts.length == 2) {
+                    int minutes = Integer.parseInt(parts[0]);
+                    int seconds = (int) Math.floor(Double.parseDouble(parts[1]));
+                    return minutes * 60 + seconds;
+                }
+            } catch (NumberFormatException ignored) {
+                return 0;
+            }
+        }
+        try {
+            return (int) Math.floor(Double.parseDouble(value));
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
 }

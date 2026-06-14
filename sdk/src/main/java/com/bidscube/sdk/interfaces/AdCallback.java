@@ -82,6 +82,12 @@ public interface AdCallback {
      * @param placementId The placement ID of the video ad
      */
     default void onVideoAdSkippable(String placementId) {}
+
+    /**
+     * Called when the post-video end card (companion/preview image) is displayed.
+     * @param placementId The placement ID of the video ad
+     */
+    default void onEndCardShown(String placementId) {}
     
     /**
      * Called when install button is clicked in skippable video ad

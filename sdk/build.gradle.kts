@@ -10,7 +10,7 @@ plugins {
 version =
     (findProperty("bidscube.version") as String?)
         ?: System.getenv("BidscubeVersion")
-        ?: "1.2.5"
+        ?: "1.2.6"
 
 android {
     namespace = "com.bidscube.sdk"

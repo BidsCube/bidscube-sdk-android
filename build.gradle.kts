@@ -9,7 +9,7 @@ plugins {
 val bidscubeVersion: String =
     System.getenv("BidscubeVersion")
         ?: (findProperty("bidscube.version") as String?)
-        ?: "1.2.5"
+        ?: "1.2.6"
 
 subprojects {
     group = "com.bidscube"

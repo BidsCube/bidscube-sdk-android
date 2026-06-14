@@ -9,6 +9,11 @@ A comprehensive Android SDK for displaying various types of ads including image 
 - **Ad Positioning**: Control ad placement (header, footer, sidebar, above/below fold)
 - **Consent Management**: Built-in GDPR and CCPA compliance
 
+## Documentation
+
+- [Custom ad rendering guide](docs/guide.md)
+- [Video SDK verification checklist (Android / iOS / Unity)](docs/video-sdk-verification.md)
+
 ## Quick Start
 
 ### 1. Add Dependency
@@ -29,10 +34,10 @@ repositories {
 
 dependencies {
     // Request the AAR artifact explicitly. Use this when the repository exposes the SDK as an AAR
-    implementation("com.bidscube:bidscube-sdk:1.2.5@aar")
+    implementation("com.bidscube:bidscube-sdk:1.2.6@aar")
 
     // If the artifact is published with proper AAR packaging Gradle will normally resolve it
-    // implementation("com.bidscube:bidscube-sdk:1.2.5")
+    // implementation("com.bidscube:bidscube-sdk:1.2.6")
 }
 ```
 
@@ -47,8 +52,8 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.bidscube:bidscube-sdk:1.2.5'
-    // or force AAR: implementation 'com.bidscube:bidscube-sdk:1.2.5@aar'
+    implementation 'com.bidscube:bidscube-sdk:1.2.6'
+    // or force AAR: implementation 'com.bidscube:bidscube-sdk:1.2.6@aar'
 }
 ```
 
@@ -548,7 +553,15 @@ This SDK is protected under the MIT License. For full license terms, please refe
 
 ## Version
 
-This README and examples are updated for Bidscube SDK version 1.2.5.
+This README and examples are updated for Bidscube SDK version 1.2.6.
+
+## What's new in 1.2.6 (user-facing)
+
+- **Inline MP4 VAST:** `VideoAdPlayerFactory` routes InLine `<MediaFile type="video/mp4">` to `NativeMp4VideoPlayer` (system `VideoView`) — **no Google IMA required** for DoorDash-style creatives.
+- **Video interstitial end card:** app-store style preview (rounded image, title, rating, Price/FREE, blue CTA). Shown only when VAST contains a companion image; skipped otherwise.
+- **Custom skip UI:** top-right countdown (`Skip in N` → `Skip`) with optional masking of native IMA skip during IMA-backed ads.
+- **Callbacks:** `onEndCardShown`, `onVideoAdSkippable`.
+- **Docs:** English video SDK verification checklist (`docs/video-sdk-verification.md`).
 
 ## What's new in 1.2.5 (user-facing)
 

@@ -3,11 +3,15 @@ package com.bidscube.sdk.utils;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
-import org.xml.sax.InputSource;
 
-import javax.xml.parsers.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 
-import java.io.*;
+import com.bidscube.sdk.models.PlayableAdConfig;
+import com.bidscube.sdk.models.VastAdPodItem;
+import com.bidscube.sdk.models.video.VideoPlaybackPlanType;
 
 public class VastParser {
 
@@ -23,11 +27,7 @@ public class VastParser {
         }
 
         try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            InputStream is = new ByteArrayInputStream(vastXml.getBytes("UTF-8"));
-            Document doc = builder.parse(is);
-            doc.getDocumentElement().normalize();
+            Document doc = parseDocument(vastXml);
 
             NodeList videoClicksNodes = doc.getElementsByTagName("VideoClicks");
             if (videoClicksNodes.getLength() > 0) {
@@ -67,7 +67,7 @@ public class VastParser {
             System.err.println("Error parsing VAST XML: " + e.getMessage());
             e.printStackTrace();
         }
-        
+
         System.err.println("No ClickThrough tag found");
         return null;
     }
@@ -84,11 +84,7 @@ public class VastParser {
         }
 
         try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            InputStream is = new ByteArrayInputStream(vastXml.getBytes("UTF-8"));
-            Document doc = builder.parse(is);
-            doc.getDocumentElement().normalize();
+            Document doc = parseDocument(vastXml);
 
             NodeList videoClicksNodes = doc.getElementsByTagName("VideoClicks");
             if (videoClicksNodes.getLength() > 0) {
@@ -133,11 +129,7 @@ public class VastParser {
         }
 
         try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            InputStream is = new ByteArrayInputStream(vastXml.getBytes("UTF-8"));
-            Document doc = builder.parse(is);
-            doc.getDocumentElement().normalize();
+            Document doc = parseDocument(vastXml);
 
             if (!"VAST".equals(doc.getDocumentElement().getTagName())) {
                 System.err.println("Root element is not VAST");
@@ -182,11 +174,7 @@ public class VastParser {
         }
 
         try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            InputStream is = new ByteArrayInputStream(vastXml.getBytes("UTF-8"));
-            Document doc = builder.parse(is);
-            doc.getDocumentElement().normalize();
+            Document doc = parseDocument(vastXml);
 
             NodeList mediaFileNodes = doc.getElementsByTagName("MediaFile");
             if (mediaFileNodes.getLength() > 0) {
@@ -200,7 +188,7 @@ public class VastParser {
         } catch (Exception e) {
             System.err.println("Error getting MediaFile URL: " + e.getMessage());
         }
-        
+
         return null;
     }
 
@@ -233,7 +221,7 @@ public class VastParser {
      */
     public static void analyzeVast(String vastXml) {
         System.out.println("=== VAST Analysis ===");
-        
+
         if (!validateVastStructure(vastXml)) {
             System.err.println("VAST structure validation failed");
             return;
@@ -254,16 +242,13 @@ public class VastParser {
         } else {
             System.out.println("❌ ERROR: No click-through URL found");
         }
-        
+
         System.out.println("=== End Analysis ===");
     }
 
     public static String getCompanionImageUrl(String vastXml) {
         try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            InputSource is = new InputSource(new StringReader(vastXml));
-            Document doc = builder.parse(is);
+            Document doc = parseDocument(vastXml);
 
             NodeList companionList = doc.getElementsByTagName("Companion");
             if (companionList != null && companionList.getLength() > 0) {
@@ -287,11 +272,7 @@ public class VastParser {
             return null;
         }
         try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            InputSource is = new InputSource(new StringReader(vastXml));
-            Document doc = builder.parse(is);
-            doc.getDocumentElement().normalize();
+            Document doc = parseDocument(vastXml);
 
             NodeList companionList = doc.getElementsByTagName("Companion");
             if (companionList.getLength() > 0) {
@@ -320,10 +301,7 @@ public class VastParser {
             return 0;
         }
         try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            InputSource is = new InputSource(new StringReader(vastXml));
-            Document doc = builder.parse(is);
+            Document doc = parseDocument(vastXml);
             NodeList linearNodes = doc.getElementsByTagName("Linear");
             if (linearNodes.getLength() == 0) {
                 return 0;
@@ -338,6 +316,16 @@ public class VastParser {
             System.err.println("Error parsing skipoffset: " + e.getMessage());
             return 0;
         }
+    }
+
+    /**
+     * Parses a VAST duration or skipoffset value (HH:MM:SS, MM:SS, or seconds) to whole seconds.
+     */
+    public static int getSkipOffsetSecondsFromValue(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return 0;
+        }
+        return parseVastDurationToSeconds(value.trim());
     }
 
     private static int parseVastDurationToSeconds(String value) {
@@ -363,6 +351,252 @@ public class VastParser {
             return (int) Math.floor(Double.parseDouble(value));
         } catch (NumberFormatException ignored) {
             return 0;
+        }
+    }
+
+    /**
+     * Returns true when the VAST response contains more than one {@code Ad} with an inline {@code MediaFile}.
+     * Used for short-form ad pods (VAST 3.0+ {@code sequence} on {@code Ad} elements).
+     */
+    public static boolean isAdPod(String vastXml) {
+        return VideoPlaybackPlanBuilder.build(vastXml).getType() == VideoPlaybackPlanType.POD;
+    }
+
+    /**
+     * Parses a VAST ad pod: multiple top-level {@code Ad} elements, each with its own inline MP4.
+     * Ads are sorted by {@code sequence} attribute (default 1 when missing).
+     */
+    public static List<VastAdPodItem> parseAdPod(String vastXml) {
+        if (vastXml == null || vastXml.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<VastAdPodItem> items = new ArrayList<>();
+        try {
+            Document doc = parseDocument(vastXml);
+            NodeList adNodes = doc.getElementsByTagName("Ad");
+            for (int i = 0; i < adNodes.getLength(); i++) {
+                Element ad = (Element) adNodes.item(i);
+                String mediaUrl = firstMediaFileUrlInElement(ad);
+                if (mediaUrl == null || mediaUrl.isEmpty()) {
+                    continue;
+                }
+                int sequence = parseSequenceAttribute(ad.getAttribute("sequence"), items.size() + 1);
+                String adId = ad.getAttribute("id");
+                String clickUrl = firstClickThroughInElement(ad);
+                String title = firstTextInTag(ad, "AdTitle");
+                int skipOffset = skipOffsetInElement(ad);
+                items.add(new VastAdPodItem(sequence, adId, mediaUrl, clickUrl, title, skipOffset));
+            }
+            items.sort(Comparator.comparingInt(VastAdPodItem::getSequence));
+        } catch (Exception e) {
+            System.err.println("Error parsing VAST ad pod: " + e.getMessage());
+        }
+        return items;
+    }
+
+    /**
+     * Detects Bidscube playable extension (video → interactive mini-game → end card).
+     */
+    public static boolean hasPlayableExtension(String vastXml) {
+        return parsePlayableConfig(vastXml) != null;
+    }
+
+    /**
+     * Reads {@code Extension type="bidscubePlayable"} / {@code BidscubePlayable} from VAST.
+     */
+    public static PlayableAdConfig parsePlayableConfig(String vastXml) {
+        if (vastXml == null || vastXml.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            Document doc = parseDocument(vastXml);
+            NodeList extensions = doc.getElementsByTagName("Extension");
+            for (int i = 0; i < extensions.getLength(); i++) {
+                Element extension = (Element) extensions.item(i);
+                if (!"bidscubePlayable".equalsIgnoreCase(extension.getAttribute("type"))) {
+                    continue;
+                }
+                NodeList playableNodes = extension.getElementsByTagName("BidscubePlayable");
+                Element playable = playableNodes.getLength() > 0
+                        ? (Element) playableNodes.item(0)
+                        : extension;
+
+                String playableUrl = firstNonEmptyAttribute(playable, "playableUrl", "url");
+                String playableHtml = null;
+                if (playableUrl == null || playableUrl.isEmpty()) {
+                    playableUrl = resolvePlayableFromCompanion(doc);
+                }
+                if (playableUrl == null || playableUrl.isEmpty()) {
+                    NodeList htmlNodes = playable.getElementsByTagName("HTMLResource");
+                    if (htmlNodes.getLength() > 0) {
+                        String html = htmlNodes.item(0).getTextContent();
+                        if (html != null && !html.trim().isEmpty()) {
+                            String trimmed = html.trim();
+                            if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+                                playableUrl = trimmed;
+                            } else {
+                                playableHtml = trimmed;
+                            }
+                        }
+                    }
+                }
+                if ((playableUrl == null || playableUrl.isEmpty())
+                        && (playableHtml == null || playableHtml.isEmpty())) {
+                    playableUrl = PlayableAdConfig.DEFAULT_PLAYABLE_ASSET;
+                }
+
+                int goal = parseIntAttribute(playable, "goalCollectibles", PlayableAdConfig.DEFAULT_GOAL);
+                int maxSec = parseIntAttribute(playable, "maxSeconds", PlayableAdConfig.DEFAULT_MAX_SECONDS);
+                int skipAfter = parseIntAttribute(playable, "skipAfterSeconds", PlayableAdConfig.DEFAULT_SKIP_AFTER_SECONDS);
+                String hint = playable.getAttribute("hint");
+                if (hint == null || hint.trim().isEmpty()) {
+                    hint = "Drag the hero • collect stars";
+                }
+                String hero = playable.getAttribute("heroEmoji");
+                if (hero == null || hero.trim().isEmpty()) {
+                    hero = "🎮";
+                }
+                return new PlayableAdConfig(
+                        playableUrl,
+                        playableHtml,
+                        goal,
+                        maxSec,
+                        skipAfter,
+                        hint.trim(),
+                        hero.trim());
+            }
+        } catch (Exception e) {
+            System.err.println("Error parsing playable extension: " + e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Returns companion {@code HTMLResource} URL when used as playable (not inline HTML).
+     */
+    public static String getPlayableHtmlResourceUrl(String vastXml) {
+        PlayableAdConfig config = parsePlayableConfig(vastXml);
+        if (config == null) {
+            return null;
+        }
+        if (config.hasRemoteOrAssetUrl()) {
+            return config.getPlayableUrl();
+        }
+        return null;
+    }
+
+    private static String resolvePlayableFromCompanion(Document doc) {
+        NodeList companionList = doc.getElementsByTagName("Companion");
+        for (int i = 0; i < companionList.getLength(); i++) {
+            Element companion = (Element) companionList.item(i);
+            NodeList htmlNodes = companion.getElementsByTagName("HTMLResource");
+            if (htmlNodes.getLength() == 0) {
+                continue;
+            }
+            String html = htmlNodes.item(0).getTextContent();
+            if (html == null || html.trim().isEmpty()) {
+                continue;
+            }
+            String trimmed = html.trim();
+            if (trimmed.startsWith("http://") || trimmed.startsWith("https://")
+                    || trimmed.startsWith("playables/") || trimmed.startsWith("asset://")) {
+                return trimmed;
+            }
+        }
+        return null;
+    }
+
+    private static String firstNonEmptyAttribute(Element element, String... names) {
+        for (String name : names) {
+            String value = element.getAttribute(name);
+            if (value != null && !value.trim().isEmpty()) {
+                return value.trim();
+            }
+        }
+        return null;
+    }
+
+    private static Document parseDocument(String vastXml) throws Exception {
+        return VastXmlParser.parse(vastXml);
+    }
+
+    private static String firstMediaFileUrlInElement(Element root) {
+        NodeList mediaFiles = root.getElementsByTagName("MediaFile");
+        for (int i = 0; i < mediaFiles.getLength(); i++) {
+            String url = mediaFiles.item(i).getTextContent();
+            if (url != null && !url.trim().isEmpty()) {
+                return url.trim();
+            }
+        }
+        return null;
+    }
+
+    private static String firstClickThroughInElement(Element root) {
+        NodeList videoClicks = root.getElementsByTagName("VideoClicks");
+        if (videoClicks.getLength() > 0) {
+            Element vc = (Element) videoClicks.item(0);
+            NodeList ct = vc.getElementsByTagName("ClickThrough");
+            if (ct.getLength() > 0) {
+                String url = ct.item(0).getTextContent();
+                if (url != null && !url.trim().isEmpty()) {
+                    return url.trim();
+                }
+            }
+        }
+        NodeList clickThrough = root.getElementsByTagName("ClickThrough");
+        if (clickThrough.getLength() > 0) {
+            String url = clickThrough.item(0).getTextContent();
+            if (url != null && !url.trim().isEmpty()) {
+                return url.trim();
+            }
+        }
+        return null;
+    }
+
+    private static String firstTextInTag(Element root, String tag) {
+        NodeList nodes = root.getElementsByTagName(tag);
+        if (nodes.getLength() > 0) {
+            String text = nodes.item(0).getTextContent();
+            if (text != null && !text.trim().isEmpty()) {
+                return text.trim();
+            }
+        }
+        return null;
+    }
+
+    private static int skipOffsetInElement(Element root) {
+        NodeList linearNodes = root.getElementsByTagName("Linear");
+        if (linearNodes.getLength() == 0) {
+            return 0;
+        }
+        Element linear = (Element) linearNodes.item(0);
+        String skipOffset = linear.getAttribute("skipoffset");
+        if (skipOffset == null || skipOffset.trim().isEmpty()) {
+            return 0;
+        }
+        return parseVastDurationToSeconds(skipOffset.trim());
+    }
+
+    private static int parseSequenceAttribute(String value, int fallback) {
+        if (value == null || value.trim().isEmpty()) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private static int parseIntAttribute(Element element, String name, int fallback) {
+        String value = element.getAttribute(name);
+        if (value == null || value.trim().isEmpty()) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException ignored) {
+            return fallback;
         }
     }
 

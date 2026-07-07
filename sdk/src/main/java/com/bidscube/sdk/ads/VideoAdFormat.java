@@ -5,5 +5,7 @@ package com.bidscube.sdk.ads;
  */
 public enum VideoAdFormat {
     INTERSTITIAL,
-    REWARDED
+    REWARDED,
+    /** In-feed / outstream embedded video (autoplay when visible). */
+    OUTSTREAM
 }

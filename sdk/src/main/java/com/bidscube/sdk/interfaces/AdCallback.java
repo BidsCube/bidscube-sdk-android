@@ -97,6 +97,66 @@ public interface AdCallback {
     default void onInstallButtonClicked(String placementId, String buttonText) {}
 
     /**
+     * Pod-aware: one video in a pod started (per-slot; does not delegate to {@link #onVideoAdStarted(String)}).
+     */
+    default void onVideoAdStarted(String placementId, int adIndex, int totalAds, String adId) {}
+
+    /**
+     * Pod-aware: one video in a pod completed.
+     */
+    default void onVideoAdCompleted(String placementId, int adIndex, int totalAds, String adId) {}
+
+    /**
+     * Pod-aware: one video in a pod skipped (current clip only; not whole-pod skip).
+     */
+    default void onVideoAdSkipped(String placementId, int adIndex, int totalAds, String adId) {}
+
+    /**
+     * Called when all videos in a VAST ad pod have finished (complete or skip).
+     */
+    default void onVideoPodCompleted(String placementId, int totalAds) {}
+
+    /**
+     * OpenRTB pod: playback started for the whole pod.
+     */
+    default void onVideoPodStarted(
+            String placementId,
+            String podId,
+            int totalAds,
+            long expectedDurationMs) {}
+
+    /**
+     * OpenRTB pod: one slot started.
+     */
+    default void onVideoPodSlotStarted(
+            String placementId,
+            String podId,
+            String impId,
+            int slotInPod,
+            int totalAds,
+            String adId) {}
+
+    /**
+     * OpenRTB pod: one slot completed.
+     */
+    default void onVideoPodSlotCompleted(
+            String placementId,
+            String podId,
+            String impId,
+            int slotInPod,
+            int totalAds,
+            String adId) {}
+
+    /**
+     * OpenRTB pod: expected vs actual duration mismatch (overfill, underfill, or slot mismatch).
+     */
+    default void onVideoPodDurationMismatch(
+            String placementId,
+            String podId,
+            long expectedDurationMs,
+            long actualDurationMs) {}
+
+    /**
      * Called only for rewarded video, after the creative has fully completed playback.
      * Never invoked for interstitial video, dismiss, skip, or errors.
      */

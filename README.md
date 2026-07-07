@@ -8,6 +8,7 @@ A comprehensive Android SDK for displaying various types of ads including image 
 - **Display Modes**: Full-screen and windowed display options (auto-selected by server response, with manual override)
 - **Ad Positioning**: Control ad placement (header, footer, sidebar, above/below fold)
 - **Consent Management**: Built-in GDPR and CCPA compliance
+- **Video flavors**: The **fullVideo** SDK flavor supports VAST video playback and **OpenRTB-like podded response** parsing (pod metadata in SSP JSON + VAST `adm`). This is **not** a full OpenRTB bid-request/auction client — the SDK still uses the legacy `GET` ad tag; see [OpenRTB podded video (internal)](docs/internal/openrtb-2.6-podded-video.md). **liteNoVideo** does not include video dependencies.
 
 ## Documentation
 
@@ -33,15 +34,23 @@ repositories {
 }
 
 dependencies {
-    // Request the AAR artifact explicitly. Use this when the repository exposes the SDK as an AAR
-    implementation("com.bidscube:bidscube-sdk:1.2.6@aar")
-
-    // If the artifact is published with proper AAR packaging Gradle will normally resolve it
-    // implementation("com.bidscube:bidscube-sdk:1.2.6")
+    // Published Maven artifacts (see sdk/build.gradle.kts):
+    implementation("com.bidscube:bidscube-sdk-full-video:1.2.6@aar")
+    // Image/native/banner only — no Media3/IMA:
+    // implementation("com.bidscube:bidscube-sdk-lite-no-video:1.2.6@aar")
 }
 ```
 
-**Smaller APK (no Google IMA on the dependency graph):** use the **`bidscube-sdk-lite`** artifact (the `noIma` / `vastIma` variant). VAST / IMA video is not included; set `SDKConfig.Builder.videoAdsEnabled(false)` (default) and use banner/image/native. For VAST video use the full **`bidscube-sdk`** artifact, `withIma`, and `videoAdsEnabled(true)`.
+**Artifacts:**
+
+| Artifact | Flavor | Video |
+|----------|--------|-------|
+| `com.bidscube:bidscube-sdk-full-video` | `fullVideo` | VAST via Media3, IMA for wrapper tags, OpenRTB-like podded response parsing |
+| `com.bidscube:bidscube-sdk-lite-no-video` | `liteNoVideo` | No video stack — banner/image/native only |
+
+Set `SDKConfig.Builder.videoAdsEnabled(true)` for video when using **full-video**. Default is `false`.
+
+Legacy coordinates (`bidscube-sdk`, `bidscube-sdk-lite`, `withIma` / `noIma`) are **deprecated** — use the artifact IDs above.
 
 Groovy DSL (build.gradle):
 
@@ -52,8 +61,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.bidscube:bidscube-sdk:1.2.6'
-    // or force AAR: implementation 'com.bidscube:bidscube-sdk:1.2.6@aar'
+    implementation 'com.bidscube:bidscube-sdk-full-video:1.2.6'
 }
 ```
 
@@ -140,6 +148,21 @@ SDKConfig config = new SDKConfig.Builder(this)
         .build();
 
 BidscubeSDK.initialize(this, config);
+```
+
+**OpenRTB-like podded video** (full-video flavor only): optional pod behavior via `SDKConfig.Builder`:
+
+```java
+import com.bidscube.sdk.openrtb.PodDurationValidationMode;
+import com.bidscube.sdk.openrtb.PodSkipPolicy;
+
+SDKConfig config = new SDKConfig.Builder(this)
+        .openRtbPodMetadataEnabled(true)
+        .videoPodDurationValidationMode(PodDurationValidationMode.LENIENT)
+        .videoPodSkipPolicy(PodSkipPolicy.SKIP_CURRENT_AND_CONTINUE)
+        .videoPodContinueOnSlotError(true)
+        .videoPodShowCounter(true)
+        .build();
 ```
 
 Automatic App Detection: The SDK automatically detects your app's ID, name, version, language, and user agent from the Android manifest and system.
@@ -520,7 +543,7 @@ try {
 ## Platform Requirements
 
 - **Minimum SDK**: API 24 (Android 7.0)
-- **Target/Compile SDK**: API 35 (Android 15)
+- **Target/Compile SDK**: API 36
 - **Java Version**: 11+
 - **Kotlin**: 2.0+
 
@@ -557,7 +580,7 @@ This README and examples are updated for Bidscube SDK version 1.2.6.
 
 ## What's new in 1.2.6 (user-facing)
 
-- **Inline MP4 VAST:** `VideoAdPlayerFactory` routes InLine `<MediaFile type="video/mp4">` to `NativeMp4VideoPlayer` (system `VideoView`) — **no Google IMA required** for DoorDash-style creatives.
+- **Inline MP4 VAST:** `VideoAdPlayerFactory` routes InLine `<MediaFile type="video/mp4">` to `Media3VideoAdPlayer` (Media3 ExoPlayer via `VideoSlotPlayer`) — **no Google IMA required** for DoorDash-style creatives. IMA is used only for wrapper VAST / ad tag URLs.
 - **Video interstitial end card:** app-store style preview (rounded image, title, rating, Price/FREE, blue CTA). Shown only when VAST contains a companion image; skipped otherwise.
 - **Custom skip UI:** top-right countdown (`Skip in N` → `Skip`) with optional masking of native IMA skip during IMA-backed ads.
 - **Callbacks:** `onEndCardShown`, `onVideoAdSkippable`.
@@ -574,8 +597,8 @@ This README and examples are updated for Bidscube SDK version 1.2.6.
 
 ## What's new in 1.2.3 (user-facing)
 
-- Maven: published SDK POM uses `packaging=aar`; BOM lives under `bom/pom.xml` and declares `com.bidscube:bidscube-sdk` with `<type>aar</type>` for Maven consumers.
-- Optional `SDKConfig.Builder.videoPlayerProvider(VideoPlayerProvider)` supplies the `VideoView` used for IMA video ads (default remains a standard `VideoView`).
+- Maven: published artifacts `bidscube-sdk-full-video` and `bidscube-sdk-lite-no-video` (see `sdk/build.gradle.kts`). Local publish output goes to `build/maven-repo/` — **do not commit** build outputs.
+- Optional `SDKConfig.Builder.videoPlayerProvider(VideoPlayerProvider)` supplies a fallback view for the IMA video path (wrapper/ad tag). Inline MP4 uses Media3 and does not require a custom `VideoView`.
 - Optional `SDKConfig.Builder.videoAdsEnabled(false)` disables VAST/IMA playback; image and native flows are unchanged. Direct AndroidX Media3 dependencies were removed from the SDK module.
 
 ## Changes from 1.2.2

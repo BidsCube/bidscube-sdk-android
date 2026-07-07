@@ -69,12 +69,13 @@ public interface IBidscubeSDK {
 
     /**
      * Get video ad view for integration into layouts (no dialog)
-     *
-     * @param placementId Ad placement ID
-     * @param callback    Callback for ad events
-     * @return View that can be added to any layout
      */
     View getVideoAdView(String placementId, AdCallback callback);
+
+    /**
+     * In-feed outstream video view: autoplay when visible, pause when off-screen.
+     */
+    View getOutstreamVideoAdView(String placementId, AdCallback callback);
 
     /**
      * Get native ad view for integration into layouts (no dialog)

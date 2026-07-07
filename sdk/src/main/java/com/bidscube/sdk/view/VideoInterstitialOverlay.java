@@ -39,6 +39,8 @@ public final class VideoInterstitialOverlay {
     private boolean skipEnabled;
     private boolean endCardMode;
     private boolean hasSkipOffset;
+    /** When false, ✕ advances (skip) instead of closing the ad — used in gamified flows. */
+    private boolean closeButtonDismissesAd = true;
 
     private VideoInterstitialOverlay(Context context, FrameLayout container, TextView actionButton) {
         this.context = context;
@@ -79,6 +81,10 @@ public final class VideoInterstitialOverlay {
         VideoInterstitialOverlay overlay = new VideoInterstitialOverlay(context, container, button);
         button.setOnClickListener(v -> overlay.handleClick());
         return overlay;
+    }
+
+    public void setCloseButtonDismissesAd(boolean dismisses) {
+        this.closeButtonDismissesAd = dismisses;
     }
 
     public void setListener(Listener listener) {
@@ -164,7 +170,11 @@ public final class VideoInterstitialOverlay {
             return;
         }
         if (endCardMode || (!skipEnabled && !hasSkipOffset)) {
-            listener.onCloseRequested();
+            if (closeButtonDismissesAd) {
+                listener.onCloseRequested();
+            } else {
+                listener.onSkipRequested();
+            }
         } else if (skipEnabled) {
             listener.onSkipRequested();
         }

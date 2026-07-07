@@ -20,11 +20,20 @@ jobs:
         run: |
           if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
             VER="${GITHUB_REF_NAME#v}"
+          elif [ -f version.properties ]; then
+            VER=$(grep -E '^bidscube.version=' version.properties | cut -d= -f2- | tr -d '\r')
           else
-            VER=$(grep -E '^bidscube.version=' gradle.properties | cut -d= -f2- | tr -d '\r')
+            VER=$(grep -E '^bidscube.version=' gradle.properties.example | cut -d= -f2- | tr -d '\r' || true)
+          fi
+          if [ -z "$VER" ]; then
+            echo "Could not resolve bidscube.version from tag, version.properties, or gradle.properties.example"
+            exit 1
           fi
           echo "BidscubeVersion=$VER" >> "$GITHUB_ENV"
           echo "Resolved BidscubeVersion=$VER"
+
+      - name: Prepare local Gradle properties (no secrets)
+        run: cp gradle.properties.example gradle.properties
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -120,8 +129,8 @@ jobs:
 
           SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
-          "$SDKMANAGER" --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-33" "build-tools;33.0.2" || {
-            echo "Failed to install Android SDK packages"
+          "$SDKMANAGER" --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-36" "build-tools;36.0.0" || {
+            echo "Failed to install Android SDK packages (API 36)"
             exit 1
           }
 

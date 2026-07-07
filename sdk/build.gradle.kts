@@ -1,6 +1,7 @@
 import org.gradle.api.GradleException
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.publish.PublishingExtension
+import java.util.Properties
 
 plugins {
     id("com.android.library")
@@ -8,8 +9,15 @@ plugins {
 }
 
 version =
-    (findProperty("bidscube.version") as String?)
-        ?: System.getenv("BidscubeVersion")
+    System.getenv("BidscubeVersion")?.takeIf { it.isNotBlank() }
+        ?: (findProperty("bidscube.version") as String?)?.takeIf { it.isNotBlank() }
+        ?: run {
+            val versionFile = rootProject.file("version.properties")
+            if (versionFile.exists()) {
+                Properties().apply { versionFile.inputStream().use { load(it) } }
+                    .getProperty("bidscube.version")
+            } else null
+        }
         ?: "1.2.6"
 
 android {
@@ -76,6 +84,7 @@ dependencies {
     implementation("com.github.bumptech.glide:glide:4.15.1")
 
     "fullVideoImplementation"("androidx.media3:media3-common:$media3Version")
+    "fullVideoImplementation"("androidx.media3:media3-exoplayer:$media3Version")
     "fullVideoImplementation"("androidx.media3:media3-ui:$media3Version")
     "fullVideoImplementation"("com.google.ads.interactivemedia.v3:interactivemedia:3.37.0")
 }

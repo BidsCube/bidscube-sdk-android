@@ -7,7 +7,7 @@ import com.bidscube.sdk.utils.SDKLogger;
 import com.bidscube.sdk.utils.VastParser;
 
 /**
- * Full build: inline MP4 via {@link NativeMp4VideoPlayer}, otherwise Google IMA.
+ * Full build: inline MP4 via {@link Media3VideoAdPlayer}, otherwise Google IMA.
  */
 public final class VideoAdPlayerFactory {
 
@@ -24,8 +24,8 @@ public final class VideoAdPlayerFactory {
             VideoPlayerProvider videoPlayerProvider) {
         String inlineMediaUrl = resolveInlineMediaUrl(adm);
         if (inlineMediaUrl != null) {
-            SDKLogger.d(TAG, "Selected native MP4 player for inline MediaFile");
-            return new NativeMp4VideoPlayer(context, inlineMediaUrl, vastRedirectUrl, videoPlayerProvider);
+            SDKLogger.d(TAG, "Selected Media3 player for inline MediaFile");
+            return new Media3VideoAdPlayer(context, inlineMediaUrl, vastRedirectUrl, videoPlayerProvider);
         }
         SDKLogger.d(TAG, "Selected IMA player (no inline MediaFile in adm)");
         return new IMAPlayerHandler(adm, vastRedirectUrl, context, videoPlayerProvider);

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+  <title>Hero Runner — Playable</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(165deg, #1a237e 0%, #283593 45%, #3949ab 100%);
+      color: #fff; touch-action: none; user-select: none;
+    }
+    #app { position: relative; width: 100%; height: 100%; }
+    #hud {
+      position: absolute; top: 0; left: 0; right: 0; z-index: 10;
+      padding: max(12px, env(safe-area-inset-top)) 16px 8px;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      pointer-events: none;
+    }
+    #hint { font-size: 15px; font-weight: 600; max-width: 65%; line-height: 1.35; text-shadow: 0 1px 4px rgba(0,0,0,.4); }
+    #score { font-size: 18px; font-weight: 700; text-shadow: 0 1px 4px rgba(0,0,0,.4); }
+    #skipBtn {
+      position: absolute; top: max(52px, calc(env(safe-area-inset-top) + 40px)); right: 14px; z-index: 11;
+      display: none; padding: 8px 14px; border-radius: 18px; border: none;
+      background: rgba(0,0,0,.55); color: #fff; font-size: 13px; font-weight: 600;
+    }
+    #canvas { display: block; width: 100%; height: 100%; }
+    #ctaBar {
+      position: absolute; bottom: 0; left: 0; right: 0; z-index: 12;
+      padding: 12px 16px max(16px, env(safe-area-inset-bottom));
+      background: linear-gradient(transparent, rgba(0,0,0,.35));
+      display: none; text-align: center;
+    }
+    #ctaBar button {
+      width: 100%; max-width: 320px; padding: 14px 24px; border: none; border-radius: 28px;
+      background: #007aff; color: #fff; font-size: 16px; font-weight: 700;
+      box-shadow: 0 4px 16px rgba(0,122,255,.45);
+    }
+    #brand {
+      position: absolute; bottom: max(20px, env(safe-area-inset-bottom)); left: 0; right: 0;
+      text-align: center; font-size: 11px; opacity: .45; pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div id="hint">Drag the hero • collect stars</div>
+    <div id="score">0 / 5</div>
+  </div>
+  <button type="button" id="skipBtn">Skip playable</button>
+  <canvas id="canvas"></canvas>
+  <div id="ctaBar"><button type="button" id="continueBtn">Continue</button></div>
+  <div id="brand">Bidscube playable demo</div>
+</div>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var GOAL = parseInt(params.get('goal') || '5', 10);
+  var MAX_MS = parseInt(params.get('maxSec') || '20', 10) * 1000;
+  var SKIP_AFTER_MS = parseInt(params.get('skipAfter') || '5', 10) * 1000;
+  var HERO = params.get('hero') || '🎮';
+  var hintEl = document.getElementById('hint');
+  if (params.get('hint')) hintEl.textContent = params.get('hint');
+
+  var canvas = document.getElementById('canvas');
+  var ctx = canvas.getContext('2d');
+  var scoreEl = document.getElementById('score');
+  var skipBtn = document.getElementById('skipBtn');
+  var ctaBar = document.getElementById('ctaBar');
+  var continueBtn = document.getElementById('continueBtn');
+  scoreEl.textContent = '0 / ' + GOAL;
+
+  var W, H, heroX, heroY, heroR = 32, score = 0, stars = [], finished = false, startTs = Date.now();
+  var skipShown = false;
+
+  function resize() {
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+    if (!heroX) { heroX = W / 2; heroY = H - heroR - 48; }
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function spawnStar() {
+    stars.push({ x: heroR + Math.random() * (W - heroR * 2), y: -24, r: 14 });
+  }
+  setInterval(spawnStar, 650);
+
+  setTimeout(function () { skipBtn.style.display = 'block'; skipShown = true; }, SKIP_AFTER_MS);
+  setTimeout(function () { finish(false); }, MAX_MS);
+
+  skipBtn.addEventListener('click', function (e) { e.stopPropagation(); finish(true); });
+  continueBtn.addEventListener('click', function () { notifyComplete(score); });
+
+  function dist(a, b) { var dx = a.x - b.x, dy = a.y - b.y; return Math.sqrt(dx * dx + dy * dy); }
+
+  function onPointer(x, y) {
+    if (finished) return;
+    heroX = Math.max(heroR, Math.min(W - heroR, x));
+    heroY = Math.max(heroR + 80, Math.min(H - heroR, y));
+  }
+  canvas.addEventListener('touchmove', function (e) {
+    e.preventDefault();
+    var t = e.touches[0]; onPointer(t.clientX, t.clientY);
+  }, { passive: false });
+  canvas.addEventListener('touchstart', function (e) {
+    var t = e.touches[0]; onPointer(t.clientX, t.clientY);
+  });
+  canvas.addEventListener('mousemove', function (e) {
+    if (e.buttons !== 1) return;
+    onPointer(e.clientX, e.clientY);
+  });
+  canvas.addEventListener('mousedown', function (e) { onPointer(e.clientX, e.clientY); });
+
+  function finish(skipped) {
+    if (finished) return;
+    finished = true;
+    skipBtn.style.display = 'none';
+    if (skipped) {
+      hintEl.textContent = 'Skipped — loading store preview…';
+      notifyComplete(score);
+      return;
+    }
+    ctaBar.style.display = 'block';
+    hintEl.textContent = score >= GOAL ? 'You win! Tap Continue' : 'Time\'s up — Continue';
+  }
+
+  function notifyComplete(s) {
+    try {
+      if (window.BidscubeAndroid && window.BidscubeAndroid.onPlayableComplete) {
+        window.BidscubeAndroid.onPlayableComplete(s);
+        return;
+      }
+    } catch (e) {}
+    document.title = 'bidscube:complete:' + s;
+  }
+
+  function notifySkip() {
+    try {
+      if (window.BidscubeAndroid && window.BidscubeAndroid.onPlayableSkipped) {
+        window.BidscubeAndroid.onPlayableSkipped();
+      }
+    } catch (e) {}
+  }
+
+  function loop() {
+    if (!finished) {
+      ctx.fillStyle = 'rgba(26,35,126,0.15)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.clearRect(0, 0, W, H);
+      for (var i = stars.length - 1; i >= 0; i--) {
+        var s = stars[i];
+        s.y += 4.2;
+        ctx.font = '28px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('⭐', s.x, s.y);
+        if (dist({ x: heroX, y: heroY }, s) < heroR + s.r) {
+          score++;
+          scoreEl.textContent = score + ' / ' + GOAL;
+          stars.splice(i, 1);
+          if (score >= GOAL) finish(false);
+          continue;
+        }
+        if (s.y > H + 30) stars.splice(i, 1);
+      }
+    }
+    ctx.beginPath();
+    ctx.arc(heroX, heroY, heroR, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fill();
+    ctx.font = '40px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(HERO, heroX, heroY);
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+</script>
+</body>
+</html>

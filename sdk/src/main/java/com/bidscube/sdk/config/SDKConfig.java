@@ -6,6 +6,9 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.webkit.WebSettings;
 
+import com.bidscube.sdk.openrtb.PodDurationValidationMode;
+import com.bidscube.sdk.video.PodSkipPolicy;
+
 /**
  * Configuration class for the Bidscube SDK
  */
@@ -32,10 +35,17 @@ public class SDKConfig {
 
     /**
      * When {@code false} (default), VAST/IMA video paths are not used. For image/native-only and minimal APK, keep
-     * {@code false} and use the {@code noIma} / {@code bidscube-sdk-lite} dependency variant when available.
-     * Set {@code true} for video; full Google IMA requires the {@code withIma} (standard) AAR, not the lite AAR.
+     * {@code false} and depend on {@code com.bidscube:bidscube-sdk-lite-no-video}.
+     * Set {@code true} for video with {@code com.bidscube:bidscube-sdk-full-video} (Media3 + IMA for wrapper tags).
      */
     private final boolean videoAdsEnabled;
+
+    /** OpenRTB-like podded response parsing (response-side only; not an OpenRTB bid client). */
+    private final boolean openRtbPodMetadataEnabled;
+    private final PodDurationValidationMode videoPodDurationValidationMode;
+    private final PodSkipPolicy videoPodSkipPolicy;
+    private final boolean videoPodContinueOnSlotError;
+    private final boolean videoPodShowCounter;
 
     private SDKConfig(Builder builder) {
         this.appId = builder.appId;
@@ -53,6 +63,11 @@ public class SDKConfig {
         this.coppa = builder.coppa;
         this.videoPlayerProvider = builder.videoPlayerProvider;
         this.videoAdsEnabled = builder.videoAdsEnabled;
+        this.openRtbPodMetadataEnabled = builder.openRtbPodMetadataEnabled;
+        this.videoPodDurationValidationMode = builder.videoPodDurationValidationMode;
+        this.videoPodSkipPolicy = builder.videoPodSkipPolicy;
+        this.videoPodContinueOnSlotError = builder.videoPodContinueOnSlotError;
+        this.videoPodShowCounter = builder.videoPodShowCounter;
     }
 
     public String getAppId() {
@@ -119,6 +134,30 @@ public class SDKConfig {
     }
 
     /**
+     * When {@code true}, the SDK parses OpenRTB-like pod fields from SSP JSON responses
+     * ({@code slotinpod}, {@code poddur}, etc.). Does not enable OpenRTB bid requests.
+     */
+    public boolean isOpenRtbPodMetadataEnabled() {
+        return openRtbPodMetadataEnabled;
+    }
+
+    public PodDurationValidationMode getVideoPodDurationValidationMode() {
+        return videoPodDurationValidationMode;
+    }
+
+    public PodSkipPolicy getVideoPodSkipPolicy() {
+        return videoPodSkipPolicy;
+    }
+
+    public boolean isVideoPodContinueOnSlotError() {
+        return videoPodContinueOnSlotError;
+    }
+
+    public boolean isVideoPodShowCounter() {
+        return videoPodShowCounter;
+    }
+
+    /**
      * Get the SDK version from environment variable or default to 1.2.6
      */
     private static String getSDKVersion() {
@@ -148,6 +187,12 @@ public class SDKConfig {
         private VideoPlayerProvider videoPlayerProvider = null;
 
         private boolean videoAdsEnabled = false;
+
+        private boolean openRtbPodMetadataEnabled = true;
+        private PodDurationValidationMode videoPodDurationValidationMode = PodDurationValidationMode.LENIENT;
+        private PodSkipPolicy videoPodSkipPolicy = PodSkipPolicy.SKIP_CURRENT_AND_CONTINUE;
+        private boolean videoPodContinueOnSlotError = true;
+        private boolean videoPodShowCounter = true;
 
         /**
          * Create a new Builder with automatic app detection
@@ -320,13 +365,46 @@ public class SDKConfig {
         }
 
         /**
-     * When {@code false} (the default), the SDK does not create IMA video players or run VAST playback; video APIs fail fast
-     * with {@link com.bidscube.sdk.interfaces.AdCallback#onAdFailed}. Use {@code true} for VAST/IMA; use the
-     * {@code withIma} / full SDK artifact (not {@code noIma} / {@code bidscube-sdk-lite}) for Google IMA in the APK.
-     * Image, native, and banner flows are unchanged.
-     */
+         * When {@code false} (the default), the SDK does not create IMA video players or run VAST playback; video APIs fail fast
+         * with {@link com.bidscube.sdk.interfaces.AdCallback#onAdFailed}. Use {@code true} with
+         * {@code com.bidscube:bidscube-sdk-full-video}; use {@code com.bidscube:bidscube-sdk-lite-no-video} for banner/image/native only.
+         * Image, native, and banner flows are unchanged.
+         */
     public Builder videoAdsEnabled(boolean videoAdsEnabled) {
             this.videoAdsEnabled = videoAdsEnabled;
+            return this;
+        }
+
+        /**
+         * Enables parsing of OpenRTB-like pod metadata in SSP JSON responses. Default {@code true}.
+         * This does not send OpenRTB bid requests.
+         */
+        public Builder openRtbPodMetadataEnabled(boolean enabled) {
+            this.openRtbPodMetadataEnabled = enabled;
+            return this;
+        }
+
+        public Builder videoPodDurationValidationMode(PodDurationValidationMode mode) {
+            this.videoPodDurationValidationMode = mode != null
+                    ? mode
+                    : PodDurationValidationMode.LENIENT;
+            return this;
+        }
+
+        public Builder videoPodSkipPolicy(PodSkipPolicy policy) {
+            this.videoPodSkipPolicy = policy != null
+                    ? policy
+                    : PodSkipPolicy.SKIP_CURRENT_AND_CONTINUE;
+            return this;
+        }
+
+        public Builder videoPodContinueOnSlotError(boolean continueOnSlotError) {
+            this.videoPodContinueOnSlotError = continueOnSlotError;
+            return this;
+        }
+
+        public Builder videoPodShowCounter(boolean showPodCounter) {
+            this.videoPodShowCounter = showPodCounter;
             return this;
         }
 

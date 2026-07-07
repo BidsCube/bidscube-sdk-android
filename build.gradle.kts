@@ -18,7 +18,7 @@ val bidscubeVersion: String =
                     .getProperty("bidscube.version")
             } else null
         }
-        ?: "1.2.6"
+        ?: "1.2.7"
 
 subprojects {
     group = "com.bidscube"

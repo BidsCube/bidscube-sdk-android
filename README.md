@@ -35,9 +35,9 @@ repositories {
 
 dependencies {
     // Published Maven artifacts (see sdk/build.gradle.kts):
-    implementation("com.bidscube:bidscube-sdk-full-video:1.2.6@aar")
+    implementation("com.bidscube:bidscube-sdk-full-video:1.2.7@aar")
     // Image/native/banner only — no Media3/IMA:
-    // implementation("com.bidscube:bidscube-sdk-lite-no-video:1.2.6@aar")
+    // implementation("com.bidscube:bidscube-sdk-lite-no-video:1.2.7@aar")
 }
 ```
 
@@ -61,7 +61,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.bidscube:bidscube-sdk-full-video:1.2.6'
+    implementation 'com.bidscube:bidscube-sdk-full-video:1.2.7'
 }
 ```
 
@@ -576,7 +576,14 @@ This SDK is protected under the MIT License. For full license terms, please refe
 
 ## Version
 
-This README and examples are updated for Bidscube SDK version 1.2.6.
+This README and examples are updated for Bidscube SDK version 1.2.7.
+
+## What's new in 1.2.7 (user-facing)
+
+- **OpenRTB-like podded response parsing** (full-video): pod metadata in SSP JSON + VAST `adm` playback (not a full OpenRTB bid client).
+- Published artifacts: `com.bidscube:bidscube-sdk-full-video` and `com.bidscube:bidscube-sdk-lite-no-video`.
+- `SDKConfig.Builder` pod options: duration validation, skip policy, continue-on-slot-error, pod counter.
+- Security/release hygiene: secrets removed from git history; use `version.properties` + `gradle.properties.example`.
 
 ## What's new in 1.2.6 (user-facing)
 

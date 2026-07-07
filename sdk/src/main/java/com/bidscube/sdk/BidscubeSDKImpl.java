@@ -18,6 +18,7 @@ import com.bidscube.sdk.ads.ImageAdType;
 import com.bidscube.sdk.ads.NativeAdType;
 import com.bidscube.sdk.ads.VideoAdFormat;
 import com.bidscube.sdk.ads.VideoAdType;
+import com.bidscube.sdk.openrtb.VideoPodConfig;
 import com.bidscube.sdk.view.VideoAdPlayerFactory;
 import com.bidscube.sdk.view.ImaSdkBootstrap;
 import com.bidscube.sdk.utils.SDKLogger;
@@ -81,7 +82,8 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
                         context,
                         deviceInfo,
                         config.getVideoPlayerProvider(),
-                        config.isVideoAdsEnabled());
+                        config.isVideoAdsEnabled(),
+                        VideoPodConfig.fromSdkConfig(config));
 
                 this.isInitialized = true;
                 SDKLogger.d(TAG, "SDK initialized successfully");
@@ -318,6 +320,37 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
                 callback.onAdFailed(placementId, -1, "Failed to get video ad view: " + e.getMessage());
             }
             return createErrorView("Failed to load video ad: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public View getOutstreamVideoAdView(String placementId, AdCallback callback) {
+        checkInitialization();
+        if (!config.isVideoAdsEnabled()) {
+            if (callback != null) {
+                callback.onAdFailed(placementId, ERROR_VIDEO_ADS_DISABLED, MSG_VIDEO_ADS_DISABLED);
+            }
+            return createErrorView(MSG_VIDEO_ADS_DISABLED);
+        }
+        if (!VideoAdPlayerFactory.isVideoSupported()) {
+            if (callback != null) {
+                callback.onAdFailed(placementId, ERROR_VIDEO_UNSUPPORTED, MSG_VIDEO_UNSUPPORTED);
+            }
+            return createErrorView(MSG_VIDEO_UNSUPPORTED);
+        }
+        if (callback != null) {
+            callback.onAdLoading(placementId);
+        }
+        try {
+            VideoAdType videoAdType = new VideoAdType(placementId);
+            String url = videoAdType.buildRequestUrl(deviceInfo).toString();
+            return adDisplayManager.getOutstreamVideoAdView(placementId, url, callback);
+        } catch (Exception e) {
+            SDKLogger.e(TAG, "Failed to get outstream video ad view: " + e.getMessage(), e);
+            if (callback != null) {
+                callback.onAdFailed(placementId, -1, "Failed to get outstream video ad view: " + e.getMessage());
+            }
+            return createErrorView("Failed to load outstream video ad: " + e.getMessage());
         }
     }
 

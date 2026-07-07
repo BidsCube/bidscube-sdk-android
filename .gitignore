@@ -2,8 +2,23 @@
 .gradle/
 build/
 **/build/
+**/maven-repo/
 *.iml
 .idea/
+
+# macOS / archive junk
+.DS_Store
+**/.DS_Store
+__MACOSX/
+
+# Local secrets — copy gradle.properties.example → gradle.properties locally (never commit)
+gradle.properties
+gradle.secrets.properties
+local.properties
+keys/private-gpg.asc
+keys/private-gpg.asc.base64
+*.keystore
+*.jks
 
 # Compiled class file
 *.class
@@ -32,5 +47,3 @@ hs_err_pid*
 replay_pid*
 /pom.xml
 settings.xml
-gradle.properties
-local.properties

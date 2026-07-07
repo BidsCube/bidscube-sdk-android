@@ -128,6 +128,14 @@ public class BidscubeSDK {
     }
 
     /**
+     * Outstream / in-feed video ad view with viewability-based autoplay.
+     */
+    public static View getOutstreamVideoAdView(String placementId, AdCallback callback) {
+        checkInitialization();
+        return sdkInstance.getOutstreamVideoAdView(placementId, callback);
+    }
+
+    /**
      * Get native ad view for integration into layouts (no dialog)
      *
      * @param placementId Ad placement ID

@@ -1,0 +1,17 @@
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+
+android.useAndroidX=true
+kotlin.code.style=official
+android.nonTransitiveRClass=true
+
+# SDK version is tracked in version.properties (committed). Override locally via:
+#   - ORG_GRADLE_PROJECT_bidscube.version=...
+#   - BidscubeVersion env var (CI tags)
+
+# Optional local publish/signing — copy to gradle.secrets.properties (never commit).
+# Prefer env vars in CI: ORG_GRADLE_PROJECT_mavenCentralUsername, etc.
+# mavenCentralUsername=
+# mavenCentralPassword=
+# signing.keyId=
+# signing.password=
+# signing.secretKeyRingFile=/path/outside/repo/private-gpg.asc

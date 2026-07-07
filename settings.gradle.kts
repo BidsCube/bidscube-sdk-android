@@ -1,3 +1,10 @@
+// Optional local publish/signing credentials (never commit — see gradle.properties.example).
+file("gradle.secrets.properties").takeIf { it.exists() }?.inputStream()?.use { stream ->
+    java.util.Properties().apply { load(stream) }.forEach { (key, value) ->
+        extra[key.toString()] = value.toString()
+    }
+}
+
 pluginManagement {
     repositories {
         google {
@@ -15,6 +22,9 @@ pluginManagement {
 rootProject.name = "bidscube-sdk"
 include(":sdk")
 
-// Publisher test app (sibling repo folder): local `implementation(project(":sdk"))`, no Maven AAR.
-include(":bidscube-testapp-android")
-project(":bidscube-testapp-android").projectDir = file("../bidscube-testapp-android")
+// Publisher test app (sibling repo folder): optional — CI / clean checkout without sibling still builds :sdk.
+val testAppDir = file("../bidscube-testapp-android")
+if (testAppDir.exists()) {
+    include(":bidscube-testapp-android")
+    project(":bidscube-testapp-android").projectDir = testAppDir
+}

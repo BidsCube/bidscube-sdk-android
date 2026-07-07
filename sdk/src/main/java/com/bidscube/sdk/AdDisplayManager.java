@@ -37,6 +37,11 @@ import com.bidscube.sdk.network.BidscubeResponse;
 import com.bidscube.sdk.network.NativeAdParser;
 import com.bidscube.sdk.utils.AdmPayloadUtils;
 import com.bidscube.sdk.utils.VastParser;
+import com.bidscube.sdk.models.video.VideoPlaybackPlan;
+import com.bidscube.sdk.models.video.VideoPlaybackPlanType;
+import com.bidscube.sdk.openrtb.VideoPodResponseResolver;
+import com.bidscube.sdk.openrtb.VideoPodConfig;
+import com.bidscube.sdk.utils.VideoPlaybackPlanBuilder;
 import com.bidscube.sdk.config.VideoPlayerProvider;
 import com.bidscube.sdk.utils.SDKLogger;
 import com.bidscube.sdk.view.BannerViewFactory;
@@ -44,7 +49,9 @@ import com.bidscube.sdk.view.BidscubeVideoAdPlayer;
 import com.bidscube.sdk.view.ImaNativeSkipBlocker;
 import com.bidscube.sdk.view.VideoInterstitialOverlay;
 import com.bidscube.sdk.view.VideoInterstitialUiHelper;
+import com.bidscube.sdk.view.OutstreamAdViewFactory;
 import com.bidscube.sdk.view.VideoAdPlayerFactory;
+import com.bidscube.sdk.view.VideoExperienceHelper;
 import com.bidscube.sdk.view.NativeAdView;
 import com.bidscube.sdk.view.NativeAdBinder;
 import com.bumptech.glide.Glide;
@@ -113,13 +120,15 @@ public class AdDisplayManager {
 
     private AdPosition currentAdPosition = AdPosition.UNKNOWN;
     private AdPosition responseAdPosition = AdPosition.UNKNOWN;
+    private final VideoPodConfig videoPodConfig;
 
     public AdDisplayManager(Context context, DeviceInfo deviceInfo, VideoPlayerProvider videoPlayerProvider,
-            boolean videoAdsEnabled) {
+            boolean videoAdsEnabled, VideoPodConfig videoPodConfig) {
         this.context = context;
         this.deviceInfo = deviceInfo;
         this.videoPlayerProvider = videoPlayerProvider;
         this.videoAdsEnabled = videoAdsEnabled;
+        this.videoPodConfig = videoPodConfig != null ? videoPodConfig : VideoPodConfig.defaults();
     }
 
     // Try to resolve an Activity from the provided Context by unwrapping ContextWrappers.
@@ -709,15 +718,40 @@ public class AdDisplayManager {
                 return;
             }
 
-            SDKLogger.v("VastResponse", adm);
-            VastParser.analyzeVast(adm);
-            String vastRedirectUrl = VastParser.getClickThroughUrl(adm);
+            com.bidscube.sdk.models.video.VideoPlaybackPlan playbackPlan =
+                    VideoPodResponseResolver.resolve(responseBody, videoPodConfig);
+
+            if (adm != null && !adm.trim().isEmpty()) {
+                SDKLogger.v("VastResponse", adm);
+                VastParser.analyzeVast(adm);
+            }
+            String vastRedirectUrl = resolveVideoClickThroughUrl(adm, playbackPlan);
 
             callback.onAdLoaded(placementId);
 
             Activity activity = resolveActivityContext();
             if (activity == null) {
                 callback.onAdFailed(placementId, -1, "Context is not an Activity");
+                return;
+            }
+
+            if (playbackPlan.isPodPlayback()) {
+                SDKLogger.d(TAG, "Routing to ad pod playback slots=" + playbackPlan.getTotalAds()
+                        + " openRtbPodded=" + playbackPlan.isOpenRtbPodded()
+                        + " podType=" + playbackPlan.getOpenRtbPodType());
+                VideoExperienceHelper.showAdPodWithPlan(
+                        activity, placementId, playbackPlan, vastRedirectUrl, effectivePosition,
+                        format, callback, videoPlayerProvider, videoPodConfig);
+                return;
+            }
+            if (adm == null || adm.trim().isEmpty()) {
+                callback.onAdFailed(placementId, -1, "Empty video ad markup");
+                return;
+            }
+            if (VastParser.hasPlayableExtension(adm)) {
+                SDKLogger.d(TAG, "Routing to gamified playable experience");
+                VideoExperienceHelper.showGamifiedInDialog(
+                        activity, placementId, adm, vastRedirectUrl, effectivePosition, format, callback, videoPlayerProvider);
                 return;
             }
 
@@ -920,6 +954,25 @@ public class AdDisplayManager {
         currentVideoPlayer = videoPlayer;
 
         SDKLogger.d(TAG, "Video ad dialog shown (fullscreen=" + fullscreen + ", skipOffset=" + skipOffsetSeconds + ")");
+    }
+
+    private static String resolveVideoClickThroughUrl(
+            String adm,
+            com.bidscube.sdk.models.video.VideoPlaybackPlan playbackPlan) {
+        String url = VastParser.getClickThroughUrl(adm);
+        if (url != null && !url.trim().isEmpty()) {
+            return url.trim();
+        }
+        if (playbackPlan == null || playbackPlan.isEmpty()) {
+            return null;
+        }
+        for (com.bidscube.sdk.models.video.VideoAdSlot slot : playbackPlan.getSlots()) {
+            String slotClick = slot.getClickThroughUrl();
+            if (slotClick != null && !slotClick.trim().isEmpty()) {
+                return slotClick.trim();
+            }
+        }
+        return null;
     }
 
     private static String firstNonEmpty(String primary, String fallback) {
@@ -1646,6 +1699,61 @@ public class AdDisplayManager {
         });
 
         return adContainer;
+    }
+
+    /**
+     * Outstream / in-feed video view with viewability-based playback.
+     */
+    public View getOutstreamVideoAdView(String placementId, String url, AdCallback callback) {
+        SDKLogger.d(TAG, "Getting outstream video ad view: " + url);
+        Activity activity = resolveActivityContext();
+        if (activity == null) {
+            if (callback != null) {
+                callback.onAdFailed(placementId, -1, "Context is not an Activity");
+            }
+            return buildSdkErrorTextView("Context is not an Activity");
+        }
+        if (!videoAdsEnabled || !VideoAdPlayerFactory.isVideoSupported()) {
+            if (callback != null) {
+                callback.onAdFailed(placementId, ERROR_VIDEO_UNSUPPORTED, MSG_VIDEO_UNSUPPORTED);
+            }
+            return buildSdkErrorTextView(MSG_VIDEO_UNSUPPORTED);
+        }
+
+        FrameLayout placeholder = new FrameLayout(context);
+        placeholder.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        sendAdRequest(url, new BidscubeCallback() {
+            @Override
+            public void onSuccess(int responseCode, BidscubeResponse responseBody) {
+                activity.runOnUiThread(() -> {
+                    try {
+                        String adm = sanitizeAdm(responseBody.getAdm());
+                        String clickUrl = VastParser.getClickThroughUrl(adm);
+                        View outstream = OutstreamAdViewFactory.createBoundView(
+                                context, placementId, adm, clickUrl, callback);
+                        placeholder.removeAllViews();
+                        placeholder.addView(outstream);
+                    } catch (Exception e) {
+                        if (callback != null) {
+                            callback.onAdFailed(placementId, -1, e.getMessage());
+                        }
+                    }
+                });
+            }
+
+            @Override
+            public void onFail(Exception e) {
+                activity.runOnUiThread(() -> {
+                    if (callback != null) {
+                        callback.onAdFailed(placementId, -1, e.getMessage());
+                    }
+                });
+            }
+        });
+        return placeholder;
     }
 
     private TextView buildSdkErrorTextView(String message) {

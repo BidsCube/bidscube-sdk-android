@@ -16,6 +16,8 @@ public class DeviceInfo {
     private final String ifa;
     private final int dnt;
     private final String appVersion;
+    /** Publisher user ID for SSP {@code user_id} / postbacks; may be null. */
+    private final String userId;
 
     private final int gdpr;
     private final String gdprConsent;
@@ -32,7 +34,7 @@ public class DeviceInfo {
      */
     public DeviceInfo(String bundle, String appName, String appStoreUrl, String language,
                       int deviceWidth, int deviceHeight, String userAgent, String ifa,
-                      int dnt, String appVersion,
+                      int dnt, String appVersion, String userId,
                       int gdpr, String gdprConsent, String usPrivacy, boolean coppa) {
         this.bundle = bundle;
         this.appName = appName;
@@ -44,10 +46,23 @@ public class DeviceInfo {
         this.ifa = ifa;
         this.dnt = dnt;
         this.appVersion = appVersion;
+        this.userId = userId;
         this.gdpr = gdpr;
         this.gdprConsent = gdprConsent;
         this.usPrivacy = usPrivacy;
         this.coppa = coppa;
+    }
+
+    /**
+     * Full constructor without publisher user ID (null).
+     */
+    public DeviceInfo(String bundle, String appName, String appStoreUrl, String language,
+                      int deviceWidth, int deviceHeight, String userAgent, String ifa,
+                      int dnt, String appVersion,
+                      int gdpr, String gdprConsent, String usPrivacy, boolean coppa) {
+        this(bundle, appName, appStoreUrl, language, deviceWidth, deviceHeight,
+                userAgent, ifa, dnt, appVersion, null,
+                gdpr, gdprConsent, usPrivacy, coppa);
     }
 
     /**
@@ -57,7 +72,7 @@ public class DeviceInfo {
                       int deviceWidth, int deviceHeight, String userAgent, String ifa,
                       int dnt, String appVersion) {
         this(bundle, appName, appStoreUrl, language, deviceWidth, deviceHeight,
-                userAgent, ifa, dnt, appVersion,
+                userAgent, ifa, dnt, appVersion, null,
                 DEFAULT_GDPR, DEFAULT_GDPR_CONSENT, DEFAULT_US_PRIVACY, DEFAULT_COPPA);
     }
 
@@ -99,6 +114,11 @@ public class DeviceInfo {
 
     public String getAppVersion() {
         return appVersion;
+    }
+
+    /** Publisher user ID for {@code user_id} query param; may be null. */
+    public String getUserId() {
+        return userId;
     }
 
     public String getGdpr() {

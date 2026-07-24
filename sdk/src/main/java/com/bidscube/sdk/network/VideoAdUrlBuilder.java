@@ -38,7 +38,9 @@ public class VideoAdUrlBuilder {
                .appendQueryParameter("language", deviceInfo.getLanguage())
                .appendQueryParameter("deviceWidth", String.valueOf(deviceInfo.getDeviceWidth()))
                .appendQueryParameter("deviceHeight", String.valueOf(deviceInfo.getDeviceHeight()));
-        
+
+        AdUrlParams.appendUserId(builder, deviceInfo);
+
         return builder.build();
     }
 }

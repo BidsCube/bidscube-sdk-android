@@ -19,6 +19,8 @@ public class SDKConfig {
     private final String appVersion;
     private final String language;
     private final String userAgent;
+    /** Publisher user ID sent to SSP as {@code user_id} for postbacks. */
+    private final String userId;
     private final boolean enableLogging;
     private final boolean enableDebugMode;
     private final int defaultAdTimeout;
@@ -53,6 +55,7 @@ public class SDKConfig {
         this.appVersion = builder.appVersion;
         this.language = builder.language;
         this.userAgent = builder.userAgent;
+        this.userId = builder.userId;
         this.enableLogging = builder.enableLogging;
         this.enableDebugMode = builder.enableDebugMode;
         this.defaultAdTimeout = builder.defaultAdTimeout;
@@ -88,6 +91,13 @@ public class SDKConfig {
 
     public String getUserAgent() {
         return userAgent;
+    }
+
+    /**
+     * Publisher-provided user ID (nullable). Sent as {@code user_id} on ad requests for server postbacks.
+     */
+    public String getUserId() {
+        return userId;
     }
 
     public boolean isEnableLogging() {
@@ -158,10 +168,10 @@ public class SDKConfig {
     }
 
     /**
-     * Get the SDK version from environment variable or default to 1.2.7
+     * Get the SDK version from environment variable or default to 1.2.8
      */
     private static String getSDKVersion() {
-        return System.getenv().getOrDefault("BidscubeVersion", "1.2.7");
+        return System.getenv().getOrDefault("BidscubeVersion", "1.2.8");
     }
 
     /**
@@ -173,6 +183,7 @@ public class SDKConfig {
         private String appVersion;
         private String language = "en";
         private String userAgent;
+        private String userId = null;
         private boolean enableLogging = true;
         private boolean enableDebugMode = false;
         private int defaultAdTimeout = 15000;
@@ -287,6 +298,19 @@ public class SDKConfig {
          */
         public Builder userAgent(String userAgent) {
             this.userAgent = userAgent;
+            return this;
+        }
+
+        /**
+         * Publisher user ID forwarded to the SSP as query parameter {@code user_id}
+         * (used for server-side postbacks). Optional; omit or pass null/blank to skip.
+         */
+        public Builder userId(String userId) {
+            if (userId == null || userId.trim().isEmpty()) {
+                this.userId = null;
+            } else {
+                this.userId = userId.trim();
+            }
             return this;
         }
 

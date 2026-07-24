@@ -50,7 +50,9 @@ public class NativeAdUrlBuilder {
 
         builder.appendQueryParameter("w", String.valueOf(adWidth))
                .appendQueryParameter("h", String.valueOf(adHeight));
-        
+
+        AdUrlParams.appendUserId(builder, deviceInfo);
+
         return builder.build();
     }
 }

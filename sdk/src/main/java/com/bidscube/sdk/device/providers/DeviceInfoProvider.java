@@ -77,6 +77,7 @@ public class DeviceInfoProvider {
                     ifa,
                     dnt,
                     appVersion,
+                    config.getUserId(),
                     gdprApplies,
                     consentString,
                     usPrivacy,

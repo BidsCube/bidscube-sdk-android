@@ -4,11 +4,12 @@ This guide shows how to intercept Bidscube SDK rendering and plug in your own UI
 
 ## Prerequisites
 - Bidscube SDK v1.1.0+ added `AdCallback#onAdRenderOverride(AdRenderContext)`.
+- Initialize with `BidscubeSDK.initialize(context, config)` — not `BidscubeSDK.init`.
 - You already load ads via `BidscubeSDK` and register an `AdCallback` implementation.
 - Your layout exposes a container (`ViewGroup`) where the custom ad view will be inserted.
 
 ## High-level flow
-1. Call any of the public Bidscube entry points (e.g. `BidscubeSDK.showImageAd`, `showVideoAd`, `showNativeAd`, or the `get*AdView` helpers) with your `AdCallback` implementation. All of these eventually forward to `AdDisplayManager` inside the SDK.
+1. Call any of the public Bidscube entry points (e.g. `BidscubeSDK.showImageAd`, `showVideoAd`, `showInterstitialVideoAd`, `showRewardedVideoAd`, `showNativeAd`, or the `get*AdView` helpers) with your `AdCallback` implementation. All of these eventually forward to `AdDisplayManager` inside the SDK.
 2. After the network layer (`BidscubeResponse`) resolves and **before** the SDK inflates its UI, `AdDisplayManager` runs `handleRenderOverride`. This happens on the main thread via `Activity.runOnUiThread`.
 3. `handleRenderOverride` only fires when both the callback and the ADM payload are non-null. It instantiates an `AdRenderContext` with `placementId`, the raw ADM, the negotiated `AdPosition`, and the planned `AdRenderType`.
 4. If your callback returns `true`, `AdDisplayManager` logs "Render override accepted" and aborts its internal renderer. Returning `false` (default) lets the SDK finish displaying the asset.

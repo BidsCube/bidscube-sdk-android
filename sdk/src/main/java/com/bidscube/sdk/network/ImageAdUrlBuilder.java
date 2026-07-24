@@ -35,7 +35,9 @@ public class ImageAdUrlBuilder {
         builder.appendQueryParameter("ua", deviceInfo.getUserAgent())
                .appendQueryParameter("ifa", deviceInfo.getIfa())
                .appendQueryParameter("dnt", String.valueOf(deviceInfo.getDnt()));
-        
+
+        AdUrlParams.appendUserId(builder, deviceInfo);
+
         return builder.build();
     }
 }

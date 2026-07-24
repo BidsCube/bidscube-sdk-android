@@ -35,9 +35,9 @@ repositories {
 
 dependencies {
     // Published Maven artifacts (see sdk/build.gradle.kts):
-    implementation("com.bidscube:bidscube-sdk-full-video:1.2.7@aar")
+    implementation("com.bidscube:bidscube-sdk-full-video:1.2.8@aar")
     // Image/native/banner only — no Media3/IMA:
-    // implementation("com.bidscube:bidscube-sdk-lite-no-video:1.2.7@aar")
+    // implementation("com.bidscube:bidscube-sdk-lite-no-video:1.2.8@aar")
 }
 ```
 
@@ -61,13 +61,25 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.bidscube:bidscube-sdk-full-video:1.2.7'
+    implementation 'com.bidscube:bidscube-sdk-full-video:1.2.8'
 }
 ```
 
 B) Use the prebuilt AAR locally (useful for testing before publishing)
 
-- Build the SDK in this repository (produces `sdk/build/outputs/aar/sdk-release.aar`) and copy it into your app module's `libs/` directory, or reference it directly.
+- Build the SDK (`./gradlew :sdk:assembleFullVideoRelease`) and copy `sdk-fullVideo-release.aar` into your app `libs/`.
+
+**Maven vs manual AAR:** When consuming via Maven coordinates, transitive dependencies resolve automatically. When copying a local **fullVideo** AAR manually, the host app must also include required runtime dependencies, for example:
+
+```groovy
+implementation 'com.google.ads.interactivemedia.v3:interactivemedia:3.37.0'
+implementation 'androidx.media3:media3-common:1.4.1'
+implementation 'androidx.media3:media3-exoplayer:1.4.1'
+implementation 'androidx.media3:media3-ui:1.4.1'
+// Glide, Material, CardView as required by the SDK
+```
+
+For **`liteNoVideo`**, no Media3/IMA video stack is included.
 
 Groovy DSL (app/build.gradle):
 
@@ -78,8 +90,7 @@ repositories {
 }
 
 dependencies {
-    implementation(name: 'sdk-release', ext: 'aar')
-    // or: implementation files('libs/sdk-release.aar')
+    implementation(name: 'sdk-fullVideo-release', ext: 'aar')
 }
 ```
 
@@ -93,8 +104,7 @@ repositories {
 }
 
 dependencies {
-    implementation(files("libs/sdk-release.aar"))
-    // or: implementation("sdk-release") { artifact { name = "sdk-release"; type = "aar" } }
+    implementation(files("libs/sdk-fullVideo-release.aar"))
 }
 ```
 
@@ -131,8 +141,9 @@ dependencies {
 ```
 
 Notes:
-- If you use option B (local AAR) remember to rebuild the SDK (`./gradlew :sdk:assembleRelease`) whenever you change SDK code and refresh the AAR file in `app/libs/`.
+- If you use option B (local AAR) remember to rebuild the SDK (`./gradlew :sdk:assembleFullVideoRelease`) whenever you change SDK code and refresh the AAR in `app/libs/`.
 - Option C lets you develop SDK and app together (recommended for iterative development).
+- Version source of truth: `version.properties` (`bidscube.version`). CI uses tag `v*`, then `version.properties`, then `gradle.properties.example`. Do not commit `gradle.properties`.
 
 ### 2. Initialize SDK
 
@@ -143,6 +154,8 @@ import com.bidscube.sdk.config.SDKConfig;
 SDKConfig config = new SDKConfig.Builder(this)
         .enableLogging(true)
         .enableDebugMode(false)
+        .videoAdsEnabled(true)
+        .userId("YOUR_USER_ID") // optional — sent as user_id for server postbacks
         .defaultAdTimeout(30000)
         .defaultAdPosition("UNKNOWN")
         .build();
@@ -154,9 +167,10 @@ BidscubeSDK.initialize(this, config);
 
 ```java
 import com.bidscube.sdk.openrtb.PodDurationValidationMode;
-import com.bidscube.sdk.openrtb.PodSkipPolicy;
+import com.bidscube.sdk.video.PodSkipPolicy;
 
 SDKConfig config = new SDKConfig.Builder(this)
+        .videoAdsEnabled(true)
         .openRtbPodMetadataEnabled(true)
         .videoPodDurationValidationMode(PodDurationValidationMode.LENIENT)
         .videoPodSkipPolicy(PodSkipPolicy.SKIP_CURRENT_AND_CONTINUE)
@@ -198,14 +212,40 @@ View imageView = BidscubeSDK.getImageAdView("19481", callback);
 ### Video Ads
 
 ```java
+// Generic video (from bid URL)
 BidscubeSDK.showVideoAd("20213", callback);
 
-// Skippable video with custom CTA text
-BidscubeSDK.showSkippableVideoAd("20213", "Install Now", callback);
+// Non-rewarded interstitial video
+BidscubeSDK.showInterstitialVideoAd("20213", callback);
 
-// Or get a View to embed
+// Rewarded — onUserRewarded only after full video/pod completion
+BidscubeSDK.showRewardedVideoAd("20213", callback);
+
+// Embeddable video view
 View videoView = BidscubeSDK.getVideoAdView("20213", callback);
+
+// In-feed / outstream video
+View outstreamView = BidscubeSDK.getOutstreamVideoAdView("20213", callback);
+
+// Deprecated test-helper style (no custom CTA overload)
+BidscubeSDK.showSkippableVideoAd("20213", callback);
 ```
+
+### Video callbacks (`AdCallback`)
+
+Legacy single-video callbacks fire for the whole session. Indexed callbacks fire per pod slot. OpenRTB pod callbacks fire only for OpenRTB-enriched plans (`plan.isOpenRtbPodded()`).
+
+| Callback | When |
+|----------|------|
+| `onVideoAdStarted(placementId)` | Playback started (once per session) |
+| `onVideoAdCompleted` / `onVideoAdSkipped` | Whole session complete / skip |
+| `onVideoAdSkippable` | IMA skippable state |
+| `onEndCardShown` | Companion preview shown |
+| `onUserRewarded` | Rewarded only — full video/pod complete; never on skip/close/error |
+| `onVideoAdStarted(…, adIndex, totalAds, adId)` | Per slot |
+| `onVideoPodStarted` / `onVideoPodSlot*` / `onVideoPodCompleted` | OpenRTB-enriched pods only |
+
+Interstitial video never calls `onUserRewarded`. Rewarded pod must complete all slots without skip to reward.
 
 ### Native Ads
 
@@ -337,13 +377,16 @@ BidscubeSDK.resetConsent();
 
 ## Customization
 
-### Custom CTA Button Text (Skippable Video)
+### Video player provider (IMA path)
 
 ```java
-BidscubeSDK.showSkippableVideoAd("20212", "Shop Now", callback);
-BidscubeSDK.showSkippableVideoAd("20212", "Learn More", callback);
-BidscubeSDK.showSkippableVideoAd("20212", "Get Started", callback);
+SDKConfig.Builder()
+    .videoPlayerProvider(context -> new VideoView(context))
+    .videoAdsEnabled(true)
+    .build();
 ```
+
+Used by `IMAPlayerHandler` when a custom surface is needed. Inline MediaFile playback uses Media3 (`Media3VideoAdPlayer`).
 
 ### Native Ad Styling
 
@@ -576,7 +619,11 @@ This SDK is protected under the MIT License. For full license terms, please refe
 
 ## Version
 
-This README and examples are updated for Bidscube SDK version 1.2.7.
+This README and examples are updated for Bidscube SDK version 1.2.8.
+
+## What's new in 1.2.8 (user-facing)
+
+- **Publisher `userId`:** `SDKConfig.Builder.userId(String)` — sent on video/image/native ad requests as query parameter `user_id` for server-side postbacks. Optional; omit or blank to skip.
 
 ## What's new in 1.2.7 (user-facing)
 
@@ -595,11 +642,11 @@ This README and examples are updated for Bidscube SDK version 1.2.7.
 
 ## What's new in 1.2.5 (user-facing)
 
-- Version bump: BOM, `gradle.properties` `bidscube.version`, `SDKConfig` default, and tooling defaults aligned to **1.2.5**.
+- Version bump: `version.properties`, BOM, `SDKConfig` default aligned to **1.2.5**.
 
 ## What's new in 1.2.4 (user-facing)
 
-- Version bump and release hygiene: BOM `bom/pom.xml`, `gradle.properties` `bidscube.version`, and runtime default in `SDKConfig` aligned to **1.2.4**.
+- Version bump and release hygiene: `version.properties`, `bom/pom.xml`, and runtime default in `SDKConfig` aligned to **1.2.4**.
 - CI publish step aligned with Gradle: use `publishAllPublicationsToDistRepository` (lite + full-video AARs to `build/maven-repo`).
 
 ## What's new in 1.2.3 (user-facing)
@@ -706,6 +753,9 @@ Notes:
 - Call the SDK show methods with a placement id and an `AdCallback`:
     - `BidscubeSDK.showImageAd(String placementId, AdCallback callback)`
     - `BidscubeSDK.showVideoAd(String placementId, AdCallback callback)`
+    - `BidscubeSDK.showInterstitialVideoAd(String placementId, AdCallback callback)`
+    - `BidscubeSDK.showRewardedVideoAd(String placementId, AdCallback callback)`
+    - `BidscubeSDK.getVideoAdView` / `getOutstreamVideoAdView` for embedded video
     - `BidscubeSDK.showNativeAd(String placementId, AdCallback callback)`
 
 - If you implement `onAdRenderOverride` in your `AdCallback` and return `true` you are responsible for creating and attaching views and handling click behavior.

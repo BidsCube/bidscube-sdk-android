@@ -2,6 +2,8 @@
 
 Universal checklist for **Android, iOS, Unity, and mediation wrappers**. Logic is the same: inspect the creative, see which player the SDK chose, and confirm the host app has the required dependencies.
 
+**Android SDK version:** 1.2.8 (`version.properties`).
+
 ---
 
 ## 1. What to look for
@@ -15,95 +17,81 @@ Failed resolution / class not found … VideoAdPlayer / IMA / …
 
 usually mean:
 
-1. Bid response arrived (HTTP 200, non-empty `adm`)
-2. **Display failed** — the SDK could not start the video player
+1. Bid response arrived (HTTP 200, non-empty `adm` or pod JSON)
+2. **Display failed** — player could not start
 
 | Cause | Summary |
 |-------|---------|
-| Missing optional dependency | SDK used IMA / Media3 / AVKit stack not in the final build |
-| Wrong SDK variant | Lite / no-video artifact used for a video placement |
-| Wrong VAST type | Inline MP4 present but SDK still chose wrapper/IMA path |
-| No UI context | Show without Activity / UIViewController |
-| MP4 unreachable | URL blocked, ATS / cleartext, network |
+| Missing optional dependency | IMA / Media3 not in final build (common with manual AAR) |
+| Wrong SDK variant | `liteNoVideo` for video placement |
+| Wrong VAST type | Inline MP4 present but IMA path chosen |
+| No UI context | Show without Activity |
+| MP4 unreachable | URL blocked, ATS, network |
 
 ---
 
-## 2. Step 1 — Inspect VAST in the response
+## 2. Step 1 — Inspect VAST / JSON in the response
 
-Read raw `adm` from logs, Charles, or mock SSP.
-
-### 2.1 Inline progressive MP4 (e.g. DoorDash)
+### 2.1 Inline progressive MP4
 
 ```xml
-<VAST …>
-  <InLine>
-    …
-    <MediaFiles>
-      <MediaFile delivery="progressive" type="video/mp4" …>
-        https://…/video.mp4
-      </MediaFile>
-    </MediaFiles>
-  </InLine>
-</VAST>
+<MediaFile delivery="progressive" type="video/mp4" …>https://…/video.mp4</MediaFile>
 ```
 
-**Expected (Android 1.2.6+ / fullVideo):** `Media3VideoAdPlayer` via `VideoSlotPlayer` (Media3 ExoPlayer) — direct inline MP4 playback, **no IMA required**.
+**Expected (Android 1.2.6+ / fullVideo):** `Media3VideoAdPlayer` via `VideoSlotPlayer` — **no IMA required** for inline MediaFile playback.
 
-**Wrapper / ad tag URL / complex VAST:** IMA path (`IMAPlayerHandler`) — `VideoAdPlayer` / Google IMA must be on classpath.
+Log: `VideoAdPlayerFactory: Selected Media3 player for inline MediaFile`
 
 ### 2.2 Wrapper / redirect VAST
 
 ```xml
-<Wrapper>
-  <VASTAdTagURI>https://…/vast.xml</VASTAdTagURI>
-</Wrapper>
+<Wrapper><VASTAdTagURI>…</VASTAdTagURI></Wrapper>
 ```
 
-**Expected:** IMA (Android/iOS) or custom VAST resolver — not the inline Media3 path.
+**Expected:** `IMAPlayerHandler` — IMA on classpath.
 
-### 2.3 Not VAST
+Log: `VideoAdPlayerFactory: Selected IMA player (no inline MediaFile in adm)`
+
+### 2.3 OpenRTB-like pod JSON
+
+JSON with `bids[]`, `openrtb.video`, `slotinpod`, etc. — **fullVideo** only. Response parsing only; SDK does not POST OpenRTB bid requests.
+
+### 2.4 Not VAST
 
 `adm` may be HTML, JSON native, or image — use the correct ad API.
-
-### VAST checklist
-
-- [ ] Valid `<VAST>` XML
-- [ ] `<InLine>` with `<MediaFile type="video/mp4">` and HTTPS URL
-- [ ] URL opens from device (`curl` / browser)
-- [ ] Not wrapper-only without `MediaFile`
 
 ---
 
 ## 3. Step 2 — SDK artifact / flavor
 
-| Variant | Video | Stack |
-|---------|-------|-------|
-| **fullVideo** | Yes | Media3 inline MP4, VAST pods, OpenRTB pods; IMA for wrapper/ad tag |
-| **liteNoVideo** | No | Banner / image / native only |
+| Variant | Maven artifact | Video |
+|---------|----------------|-------|
+| **fullVideo** | `bidscube-sdk-full-video` | Media3, VAST pods, OpenRTB-like pods; IMA for wrapper |
+| **liteNoVideo** | `bidscube-sdk-lite-no-video` | Banner / image / native only |
 
-- [ ] Single SDK artifact (no conflicting duplicates)
-- [ ] Video placement uses video-enabled artifact (`fullVideo`, not `liteNoVideo`)
-- [ ] AAR + adapter from the same release
+- [ ] Video placement uses `fullVideo`
+- [ ] No conflicting duplicate SDK artifacts
 
 ---
 
 ## 4. Step 3 — Host app dependencies
 
-**Inline MP4 / pod playback (fullVideo):** requires Media3 (bundled in fullVideo artifact).
+**Maven:** transitive deps resolve automatically.
 
-**IMA path only** (wrapper VAST, ad tag URL, no inline MediaFile):
+**Manual fullVideo AAR** — host must add, for example:
 
 ```groovy
 implementation 'com.google.ads.interactivemedia.v3:interactivemedia:3.37.0'
+implementation 'androidx.media3:media3-common:1.4.1'
+implementation 'androidx.media3:media3-exoplayer:1.4.1'
+implementation 'androidx.media3:media3-ui:1.4.1'
 ```
 
-**Gradle check:**
+Inline MP4 does **not** use IMA for playback, but wrapper VAST still requires IMA.
 
 ```bash
-./gradlew :app:dependencies | grep -iE 'bidscube|interactivemedia|media3|ima'
+./gradlew :app:dependencies | grep -iE 'bidscube|interactivemedia|media3'
 ```
-
-**Note:** Inline MP4 on Android **1.2.6+** does **not** require IMA when `adm` contains a playable `<MediaFile type="video/mp4">`.
 
 ---
 
@@ -112,14 +100,14 @@ implementation 'com.google.ads.interactivemedia.v3:interactivemedia:3.37.0'
 Success chain:
 
 1. Video ad request
-2. Bid OK (`adm` length > 0)
-3. Player choice (`Media3VideoAdPlayer` / `VideoSlotPlayer` vs `IMAPlayerHandler`)
-4. `playVast` / playback start
-5. `onAdDisplayed` → `onVideoAdStarted` (once per single video; pod uses indexed + OpenRTB callbacks)
+2. Bid OK
+3. Player: Media3 vs IMA (single ad) or `VastAdPodPlayer` (pod)
+4. `onAdDisplayed` → `onVideoAdStarted`
+5. Pods: indexed + OpenRTB callbacks when applicable
 
-**Inline MP4:** look for Media3 / `VideoSlotPlayer` playback logs.
+**End card:** only with companion image — `onEndCardShown`.
 
-**End card:** only if VAST has companion image — `onEndCardShown`. No companion → dialog closes without preview.
+**Rewarded:** `onUserRewarded` only after full video/pod completion; never on skip.
 
 ---
 
@@ -127,59 +115,55 @@ Success chain:
 
 | Symptom | Action |
 |---------|--------|
-| Inline MP4 + `VideoAdPlayer` not found | Use **fullVideo** artifact; add IMA only if using wrapper/ad tag path |
-| Wrapper VAST, no MediaFile | Add IMA or resolve wrapper chain |
-| MP4 network error | Fix URL / ATS / firewall |
-| `Video playback is not supported` | Replace lite artifact |
-| Works in test app, fails in production | Compare AAR vs Maven, release ProGuard, IMA in release (IMA path only) |
+| Inline MP4 + class not found | `fullVideo` artifact; add Media3 if manual AAR |
+| Wrapper VAST | Add IMA |
+| OpenRTB JSON, no play | `videoAdsEnabled`, `openRtbPodMetadataEnabled`, per-bid `adm` |
+| `Video playback is not supported` | Replace `liteNoVideo` |
+| Rewarded pod no reward | Must complete all slots without skip |
 
 ---
 
-## 7. Minimal test case
-
-1. Bid on video placement with inline MP4 in `adm`
-2. Show interstitial / rewarded
-3. Log player class and callbacks
-4. Repeat on **release** build
-
-**Success:** video plays, skip/close works, `onAdClosed` (or reward for rewarded).
-
-### Sample inline VAST (MP4 + companion)
-
-See `sdk/src/main/res/raw/vast.xml` in this repo.
-
----
-
-## 8. Android SDK appendix (this repo)
+## 7. Android SDK appendix (this repo)
 
 | Gradle flavor | Maven artifact | Inline MP4 / pod | IMA path |
 |---------------|----------------|------------------|----------|
 | `fullVideo` | `bidscube-sdk-full-video` | `Media3VideoAdPlayer`, `VastAdPodPlayer` | `IMAPlayerHandler` |
 | `liteNoVideo` | `bidscube-sdk-lite-no-video` | Not supported | Stub |
 
-**Runtime:**
+**Initialize:**
 
 ```java
-SDKConfig.Builder()
+SDKConfig config = new SDKConfig.Builder(context)
     .videoAdsEnabled(true)
     .build();
+BidscubeSDK.initialize(context, config);
 ```
 
-**`VideoAdPlayerFactory` routing (1.2.6+):**
+**`VideoAdPlayerFactory` routing:**
 
-- Inline `<MediaFile type="video/mp4">` → Media3 (`Media3VideoAdPlayer` / `VideoSlotPlayer`)
-- Wrapper / ad tag URL / no MediaFile → `IMAPlayerHandler`
+- Inline `<MediaFile type="video/mp4">` → Media3
+- Wrapper / ad tag / no MediaFile → IMA
 
-**End card:** shown only when `VastParser.getCompanionImageUrl(adm)` returns a URL.
+**OpenRTB-like pods:** `OpenRtbPoddedResponseNormalizer` → `VideoExperienceHelper.showAdPodWithPlan`.
+
+**Tests:**
+
+```bash
+./gradlew :sdk:testFullVideoDebugUnitTest
+./gradlew :sdk:testLiteNoVideoDebugUnitTest
+```
 
 ---
 
-## 9. Five-minute checklist
+## 8. Five-minute checklist
 
 ```
-1. adm — InLine + MediaFile mp4?     → Media3 direct play (fullVideo)
-2. SDK — fullVideo variant?          → if no, switch artifact
-3. Logs — Media3 vs IMA?             → IMA only for wrapper/ad tag
-4. IMA in release (IMA path only)?   → add dependency if missing
-5. MP4 URL live on device?           → if no, network not SDK
+1. adm — InLine + MediaFile mp4 OR OpenRTB bids with adm?
+2. SDK — fullVideo 1.2.8+?
+3. BidscubeSDK.initialize + videoAdsEnabled(true)?
+4. Logs — Media3 vs IMA vs VastAdPodPlayer?
+5. Manual AAR — Media3 + IMA deps present?
+6. MP4 URL live on device?
+7. End card? — companion StaticResource?
+8. Rewarded pod — all slots completed?
 ```

@@ -35,9 +35,9 @@ repositories {
 
 dependencies {
     // Published Maven artifacts (see sdk/build.gradle.kts):
-    implementation("com.bidscube:bidscube-sdk-full-video:1.2.8@aar")
+    implementation("com.bidscube:bidscube-sdk-full-video:1.2.9@aar")
     // Image/native/banner only — no Media3/IMA:
-    // implementation("com.bidscube:bidscube-sdk-lite-no-video:1.2.8@aar")
+    // implementation("com.bidscube:bidscube-sdk-lite-no-video:1.2.9@aar")
 }
 ```
 
@@ -61,7 +61,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.bidscube:bidscube-sdk-full-video:1.2.8'
+    implementation 'com.bidscube:bidscube-sdk-full-video:1.2.9'
 }
 ```
 
@@ -619,7 +619,13 @@ This SDK is protected under the MIT License. For full license terms, please refe
 
 ## Version
 
-This README and examples are updated for Bidscube SDK version 1.2.8.
+This README and examples are updated for Bidscube SDK version 1.2.9.
+
+## What's new in 1.2.9 (user-facing)
+
+- **`autoClose`:** `SDKConfig.Builder.autoClose(boolean)` (default `false`) — after video complete/skip, either auto-dismiss or keep Companion end card / last frame with manual close.
+- **VAST Companion end cards:** Static / HTML / IFrame + click/view tracking (priority HTML > IFrame > Static).
+- **Defaults:** video position default `FULL_SCREEN`; skip countdown default **15s** when VAST has no `skipoffset`; close (✕) works after skip countdown.
 
 ## What's new in 1.2.8 (user-facing)
 

@@ -11,6 +11,8 @@ import java.util.List;
 
 import com.bidscube.sdk.models.PlayableAdConfig;
 import com.bidscube.sdk.models.VastAdPodItem;
+import com.bidscube.sdk.models.video.VastCompanion;
+import com.bidscube.sdk.models.video.VastPreview;
 import com.bidscube.sdk.models.video.VideoPlaybackPlanType;
 
 public class VastParser {
@@ -247,48 +249,178 @@ public class VastParser {
     }
 
     public static String getCompanionImageUrl(String vastXml) {
+        VastCompanion companion = getBestCompanion(vastXml);
+        return companion != null ? companion.getStaticImageUrl() : null;
+    }
+
+    /**
+     * Best Companion for end card. Priority across resources: HTML → IFrame → Static.
+     */
+    public static VastCompanion getBestCompanion(String vastXml) {
+        if (vastXml == null || vastXml.trim().isEmpty()) {
+            return null;
+        }
         try {
             Document doc = parseDocument(vastXml);
-
-            NodeList companionList = doc.getElementsByTagName("Companion");
-            if (companionList != null && companionList.getLength() > 0) {
-                Element companion = (Element) companionList.item(0);
-                NodeList staticResources = companion.getElementsByTagName("StaticResource");
-                if (staticResources != null && staticResources.getLength() > 0) {
-                    return staticResources.item(0).getTextContent().trim();
-                }
-            }
+            return selectBestCompanion(doc.getElementsByTagName("Companion"));
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("Error parsing Companion: " + e.getMessage());
+            return null;
         }
-        return null;
+    }
+
+    /**
+     * Companion preview for end card (HTML / IFrame / Static).
+     */
+    public static VastPreview getCompanionPreview(String vastXml) {
+        return VastPreview.fromCompanion(getBestCompanion(vastXml));
+    }
+
+    /**
+     * Parses the best Companion under an {@code Ad} element.
+     */
+    public static VastCompanion getBestCompanionFromAd(Element ad) {
+        if (ad == null) {
+            return null;
+        }
+        return selectBestCompanion(ad.getElementsByTagName("Companion"));
     }
 
     /**
      * Returns companion/end-card click-through URL, falling back to video click-through.
      */
     public static String getCompanionClickThroughUrl(String vastXml) {
-        if (vastXml == null || vastXml.trim().isEmpty()) {
-            return null;
-        }
-        try {
-            Document doc = parseDocument(vastXml);
-
-            NodeList companionList = doc.getElementsByTagName("Companion");
-            if (companionList.getLength() > 0) {
-                Element companion = (Element) companionList.item(0);
-                NodeList clickThroughNodes = companion.getElementsByTagName("CompanionClickThrough");
-                if (clickThroughNodes.getLength() > 0) {
-                    String url = clickThroughNodes.item(0).getTextContent();
-                    if (url != null && !url.trim().isEmpty()) {
-                        return url.trim();
-                    }
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("Error parsing companion click-through: " + e.getMessage());
+        VastCompanion companion = getBestCompanion(vastXml);
+        if (companion != null
+                && companion.getClickThroughUrl() != null
+                && !companion.getClickThroughUrl().trim().isEmpty()) {
+            return companion.getClickThroughUrl().trim();
         }
         return getClickThroughUrl(vastXml);
+    }
+
+    private static VastCompanion selectBestCompanion(NodeList companionList) {
+        if (companionList == null || companionList.getLength() == 0) {
+            return null;
+        }
+        VastCompanion bestHtml = null;
+        VastCompanion bestIframe = null;
+        VastCompanion bestStatic = null;
+        for (int i = 0; i < companionList.getLength(); i++) {
+            if (!(companionList.item(i) instanceof Element)) {
+                continue;
+            }
+            VastCompanion parsed = parseCompanionElement((Element) companionList.item(i));
+            if (parsed == null || !parsed.isRenderable()) {
+                continue;
+            }
+            switch (parsed.getResourceType()) {
+                case HTML:
+                    if (bestHtml == null) {
+                        bestHtml = parsed;
+                    }
+                    break;
+                case IFRAME:
+                    if (bestIframe == null) {
+                        bestIframe = parsed;
+                    }
+                    break;
+                case STATIC:
+                    if (bestStatic == null) {
+                        bestStatic = parsed;
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+        if (bestHtml != null) {
+            return bestHtml;
+        }
+        if (bestIframe != null) {
+            return bestIframe;
+        }
+        return bestStatic;
+    }
+
+    /**
+     * Parses one Companion. Within a single Companion that has multiple resource types,
+     * prefers HTML → IFrame → Static.
+     */
+    static VastCompanion parseCompanionElement(Element companion) {
+        if (companion == null) {
+            return null;
+        }
+        int width = parseIntAttr(companion, "width");
+        int height = parseIntAttr(companion, "height");
+        String clickThrough = firstTextInTag(companion, "CompanionClickThrough");
+        List<String> clickTracking = collectTagUrls(companion, "CompanionClickTracking");
+        List<String> viewTracking = collectCompanionViewTrackers(companion);
+
+        String html = firstTextInTag(companion, "HTMLResource");
+        if (html != null) {
+            return new VastCompanion(
+                    VastCompanion.ResourceType.HTML, html, clickThrough, clickTracking, viewTracking, width, height);
+        }
+        String iframe = firstTextInTag(companion, "IFrameResource");
+        if (iframe != null) {
+            return new VastCompanion(
+                    VastCompanion.ResourceType.IFRAME, iframe, clickThrough, clickTracking, viewTracking, width, height);
+        }
+        String staticRes = firstTextInTag(companion, "StaticResource");
+        if (staticRes != null) {
+            return new VastCompanion(
+                    VastCompanion.ResourceType.STATIC, staticRes, clickThrough, clickTracking, viewTracking, width, height);
+        }
+        return null;
+    }
+
+    private static List<String> collectTagUrls(Element root, String tag) {
+        List<String> urls = new ArrayList<>();
+        NodeList nodes = root.getElementsByTagName(tag);
+        for (int i = 0; i < nodes.getLength(); i++) {
+            String url = nodes.item(i).getTextContent();
+            if (url != null && !url.trim().isEmpty()) {
+                urls.add(url.trim());
+            }
+        }
+        return urls;
+    }
+
+    private static List<String> collectCompanionViewTrackers(Element companion) {
+        List<String> urls = new ArrayList<>();
+        NodeList tracking = companion.getElementsByTagName("Tracking");
+        for (int i = 0; i < tracking.getLength(); i++) {
+            if (!(tracking.item(i) instanceof Element)) {
+                continue;
+            }
+            Element el = (Element) tracking.item(i);
+            String event = el.getAttribute("event");
+            if (event == null) {
+                continue;
+            }
+            String normalized = event.trim().toLowerCase();
+            if (!"creativeview".equals(normalized) && !"companionview".equals(normalized)) {
+                continue;
+            }
+            String url = el.getTextContent();
+            if (url != null && !url.trim().isEmpty()) {
+                urls.add(url.trim());
+            }
+        }
+        return urls;
+    }
+
+    private static int parseIntAttr(Element element, String name) {
+        try {
+            String value = element.getAttribute(name);
+            if (value == null || value.trim().isEmpty()) {
+                return 0;
+            }
+            return Integer.parseInt(value.trim());
+        } catch (Exception ignored) {
+            return 0;
+        }
     }
 
     /**

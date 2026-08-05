@@ -8,8 +8,10 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.util.TypedValue;
 import android.view.Gravity;
-import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -18,11 +20,14 @@ import android.widget.TextView;
 import androidx.annotation.Nullable;
 import androidx.cardview.widget.CardView;
 
+import com.bidscube.sdk.models.video.VastCompanion;
+import com.bidscube.sdk.network.TrackerPinger;
 import com.bidscube.sdk.utils.SDKLogger;
 import com.bumptech.glide.Glide;
 
 /**
- * Shared post-roll end card UI for video interstitials (app-store style preview + CTA).
+ * Shared post-roll end card UI for video interstitials.
+ * Supports VAST Companion StaticResource, HTMLResource, and IFrameResource.
  */
 public final class VideoInterstitialUiHelper {
 
@@ -110,16 +115,93 @@ public final class VideoInterstitialUiHelper {
             @Nullable Runnable onEndCardShown,
             @Nullable Runnable onEndCardClicked,
             @Nullable Runnable onClose) {
+        VastCompanion companion = null;
+        if (imageUrl != null && !imageUrl.trim().isEmpty()) {
+            companion = new VastCompanion(
+                    VastCompanion.ResourceType.STATIC,
+                    imageUrl.trim(),
+                    clickUrl,
+                    null,
+                    null,
+                    0,
+                    0);
+        }
+        showCompanionEndCard(
+                context,
+                player,
+                container,
+                overlay,
+                companion,
+                clickUrl,
+                ctaText,
+                appTitle,
+                rating,
+                downloadCount,
+                priceText,
+                onEndCardShown,
+                onEndCardClicked,
+                onClose);
+    }
 
-        try {
-            player.release();
-        } catch (Throwable ignored) {
+    public static void showCompanionEndCard(
+            Context context,
+            @Nullable BidscubeVideoAdPlayer player,
+            FrameLayout container,
+            @Nullable VideoInterstitialOverlay overlay,
+            @Nullable VastCompanion companion,
+            @Nullable String fallbackClickUrl,
+            @Nullable Runnable onEndCardShown,
+            @Nullable Runnable onEndCardClicked,
+            @Nullable Runnable onClose) {
+        showCompanionEndCard(
+                context,
+                player,
+                container,
+                overlay,
+                companion,
+                fallbackClickUrl,
+                DEFAULT_CTA,
+                DEFAULT_TITLE,
+                DEFAULT_RATING,
+                DEFAULT_DOWNLOADS,
+                DEFAULT_PRICE,
+                onEndCardShown,
+                onEndCardClicked,
+                onClose);
+    }
+
+    public static void showCompanionEndCard(
+            Context context,
+            @Nullable BidscubeVideoAdPlayer player,
+            FrameLayout container,
+            @Nullable VideoInterstitialOverlay overlay,
+            @Nullable VastCompanion companion,
+            @Nullable String fallbackClickUrl,
+            @Nullable String ctaText,
+            @Nullable String appTitle,
+            float rating,
+            @Nullable String downloadCount,
+            @Nullable String priceText,
+            @Nullable Runnable onEndCardShown,
+            @Nullable Runnable onEndCardClicked,
+            @Nullable Runnable onClose) {
+
+        if (player != null) {
+            try {
+                player.release();
+            } catch (Throwable ignored) {
+            }
         }
 
         container.removeAllViews();
         container.setBackgroundColor(COLOR_BG);
 
+        final String clickUrl = resolveClickUrl(companion, fallbackClickUrl);
+
         Runnable openLanding = () -> {
+            if (companion != null) {
+                TrackerPinger.pingUrls("companion_click", companion.getClickTrackingUrls());
+            }
             if (onEndCardClicked != null) {
                 onEndCardClicked.run();
             }
@@ -129,6 +211,142 @@ public final class VideoInterstitialUiHelper {
                 context.startActivity(intent);
             }
         };
+
+        FrameLayout closeHost;
+        if (companion != null && companion.isHtml()) {
+            closeHost = container;
+            showWebCompanion(context, container, companion, true);
+        } else if (companion != null && companion.isIframe()) {
+            closeHost = container;
+            showWebCompanion(context, container, companion, false);
+        } else {
+            closeHost = showStaticAppStoreEndCard(
+                    context,
+                    container,
+                    companion != null ? companion.getStaticImageUrl() : null,
+                    ctaText,
+                    appTitle,
+                    rating,
+                    downloadCount,
+                    priceText,
+                    openLanding);
+        }
+
+        VideoInterstitialOverlay endCardOverlay = VideoInterstitialOverlay.attach(closeHost);
+        endCardOverlay.showEndCardClose();
+        endCardOverlay.setListener(new VideoInterstitialOverlay.Listener() {
+            @Override
+            public void onSkipRequested() {
+            }
+
+            @Override
+            public void onCloseRequested() {
+                if (onClose != null) {
+                    onClose.run();
+                }
+            }
+        });
+
+        if (overlay != null) {
+            try {
+                overlay.detach();
+            } catch (Throwable ignored) {
+            }
+        }
+
+        if (companion != null) {
+            TrackerPinger.pingUrls("companion_view", companion.getViewTrackingUrls());
+        }
+        if (onEndCardShown != null) {
+            onEndCardShown.run();
+        }
+        SDKLogger.d(TAG, "Video end card displayed type="
+                + (companion != null ? companion.getResourceType() : "none"));
+    }
+
+    /**
+     * Keeps the last video frame visible and shows a manual close control.
+     * Does not release the player.
+     */
+    public static void showLastFrameClose(
+            @Nullable VideoInterstitialOverlay overlay,
+            @Nullable Runnable onClose) {
+        if (overlay == null) {
+            return;
+        }
+        overlay.showCloseOnly();
+        overlay.setListener(new VideoInterstitialOverlay.Listener() {
+            @Override
+            public void onSkipRequested() {
+            }
+
+            @Override
+            public void onCloseRequested() {
+                if (onClose != null) {
+                    onClose.run();
+                }
+            }
+        });
+        overlay.bringToFront();
+        SDKLogger.d(TAG, "Last-frame close control shown");
+    }
+
+    private static String resolveClickUrl(
+            @Nullable VastCompanion companion,
+            @Nullable String fallbackClickUrl) {
+        if (companion != null
+                && companion.getClickThroughUrl() != null
+                && !companion.getClickThroughUrl().trim().isEmpty()) {
+            return companion.getClickThroughUrl().trim();
+        }
+        if (fallbackClickUrl != null && !fallbackClickUrl.trim().isEmpty()) {
+            return fallbackClickUrl.trim();
+        }
+        return null;
+    }
+
+    private static void showWebCompanion(
+            Context context,
+            FrameLayout container,
+            VastCompanion companion,
+            boolean inlineHtml) {
+        WebView webView = new WebView(context);
+        webView.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        }
+        webView.setWebViewClient(new WebViewClient());
+        container.addView(webView);
+
+        String content = companion.getContent().trim();
+        if (inlineHtml) {
+            if (content.startsWith("http://") || content.startsWith("https://")) {
+                webView.loadUrl(content);
+            } else {
+                webView.loadDataWithBaseURL(null, content, "text/html", "utf-8", null);
+            }
+        } else {
+            webView.loadUrl(content);
+        }
+    }
+
+    private static FrameLayout showStaticAppStoreEndCard(
+            Context context,
+            FrameLayout container,
+            @Nullable String imageUrl,
+            @Nullable String ctaText,
+            @Nullable String appTitle,
+            float rating,
+            @Nullable String downloadCount,
+            @Nullable String priceText,
+            Runnable openLanding) {
 
         int screenHeight = context.getResources().getDisplayMetrics().heightPixels;
         int horizontal = dp(context, 20);
@@ -170,22 +388,6 @@ public final class VideoInterstitialUiHelper {
 
         imageCard.addView(preview);
         imageWrapper.addView(imageCard);
-
-        VideoInterstitialOverlay endCardOverlay = VideoInterstitialOverlay.attach(imageWrapper);
-        endCardOverlay.showEndCardClose();
-        endCardOverlay.setListener(new VideoInterstitialOverlay.Listener() {
-            @Override
-            public void onSkipRequested() {
-                // Not used on end card.
-            }
-
-            @Override
-            public void onCloseRequested() {
-                if (onClose != null) {
-                    onClose.run();
-                }
-            }
-        });
 
         LinearLayout infoSection = new LinearLayout(context);
         infoSection.setOrientation(LinearLayout.VERTICAL);
@@ -266,18 +468,7 @@ public final class VideoInterstitialUiHelper {
         root.addView(infoSection);
         root.addView(bottomRow);
         container.addView(root);
-
-        if (overlay != null) {
-            try {
-                overlay.detach();
-            } catch (Throwable ignored) {
-            }
-        }
-
-        if (onEndCardShown != null) {
-            onEndCardShown.run();
-        }
-        SDKLogger.d(TAG, "Video end card displayed");
+        return imageWrapper;
     }
 
     private static LinearLayout createRatingRow(Context context, float rating) {

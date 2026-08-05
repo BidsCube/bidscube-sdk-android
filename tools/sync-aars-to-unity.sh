@@ -4,11 +4,11 @@
 #   ./gradlew :sdk:assembleLiteNoVideoRelease :sdk:assembleFullVideoRelease
 #
 # Usage:
-#   BIDSCUBE_VERSION=1.2.8 ./tools/sync-aars-to-unity.sh [path/to/Runtime/Plugins/Android ...]
+#   BIDSCUBE_VERSION=1.2.9 ./tools/sync-aars-to-unity.sh [path/to/Runtime/Plugins/Android ...]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VER="${BIDSCUBE_VERSION:-1.2.8}"
+VER="${BIDSCUBE_VERSION:-1.2.9}"
 
 LITE_BUILT="$ROOT/sdk/build/outputs/aar/sdk-liteNoVideo-release.aar"
 FULL_BUILT="$ROOT/sdk/build/outputs/aar/sdk-fullVideo-release.aar"

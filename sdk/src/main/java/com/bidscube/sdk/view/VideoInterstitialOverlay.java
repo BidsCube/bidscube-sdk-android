@@ -131,6 +131,8 @@ public final class VideoInterstitialOverlay {
         stopCountdown();
         skipEnabled = false;
         endCardMode = false;
+        // Must clear skipoffset state — otherwise ✕ clicks are ignored after countdown was started.
+        hasSkipOffset = false;
         actionButton.setText("\u2715");
         actionButton.setVisibility(android.view.View.VISIBLE);
     }
@@ -139,6 +141,7 @@ public final class VideoInterstitialOverlay {
         stopCountdown();
         skipEnabled = false;
         endCardMode = true;
+        hasSkipOffset = false;
         actionButton.setText("\u2715");
         actionButton.setVisibility(android.view.View.VISIBLE);
     }

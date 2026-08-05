@@ -42,6 +42,12 @@ public class SDKConfig {
      */
     private final boolean videoAdsEnabled;
 
+    /**
+     * When {@code true}, fullscreen video ads close automatically after complete/skip
+     * (no end card / last frame). Default {@code false}.
+     */
+    private final boolean autoClose;
+
     /** OpenRTB-like podded response parsing (response-side only; not an OpenRTB bid client). */
     private final boolean openRtbPodMetadataEnabled;
     private final PodDurationValidationMode videoPodDurationValidationMode;
@@ -66,6 +72,7 @@ public class SDKConfig {
         this.coppa = builder.coppa;
         this.videoPlayerProvider = builder.videoPlayerProvider;
         this.videoAdsEnabled = builder.videoAdsEnabled;
+        this.autoClose = builder.autoClose;
         this.openRtbPodMetadataEnabled = builder.openRtbPodMetadataEnabled;
         this.videoPodDurationValidationMode = builder.videoPodDurationValidationMode;
         this.videoPodSkipPolicy = builder.videoPodSkipPolicy;
@@ -144,6 +151,14 @@ public class SDKConfig {
     }
 
     /**
+     * When {@code true}, fullscreen video closes automatically after complete/skip —
+     * no end card or last-frame hold. Default {@code false}.
+     */
+    public boolean isAutoClose() {
+        return autoClose;
+    }
+
+    /**
      * When {@code true}, the SDK parses OpenRTB-like pod fields from SSP JSON responses
      * ({@code slotinpod}, {@code poddur}, etc.). Does not enable OpenRTB bid requests.
      */
@@ -168,10 +183,10 @@ public class SDKConfig {
     }
 
     /**
-     * Get the SDK version from environment variable or default to 1.2.8
+     * Get the SDK version from environment variable or default to 1.2.9
      */
     private static String getSDKVersion() {
-        return System.getenv().getOrDefault("BidscubeVersion", "1.2.8");
+        return System.getenv().getOrDefault("BidscubeVersion", "1.2.9");
     }
 
     /**
@@ -187,7 +202,7 @@ public class SDKConfig {
         private boolean enableLogging = true;
         private boolean enableDebugMode = false;
         private int defaultAdTimeout = 15000;
-        private String defaultAdPosition = "UNKNOWN";
+        private String defaultAdPosition = "FULL_SCREEN";
 
         // Consent parameters (null means use ConsentManager defaults)
         private Integer gdpr = null;
@@ -198,6 +213,8 @@ public class SDKConfig {
         private VideoPlayerProvider videoPlayerProvider = null;
 
         private boolean videoAdsEnabled = false;
+
+        private boolean autoClose = false;
 
         private boolean openRtbPodMetadataEnabled = true;
         private PodDurationValidationMode videoPodDurationValidationMode = PodDurationValidationMode.LENIENT;
@@ -339,7 +356,7 @@ public class SDKConfig {
         }
 
         /**
-         * Set default ad position
+         * Set default ad position. Default {@code FULL_SCREEN} (video interstitials open fullscreen).
          */
         public Builder defaultAdPosition(String position) {
             this.defaultAdPosition = position;
@@ -394,8 +411,20 @@ public class SDKConfig {
          * {@code com.bidscube:bidscube-sdk-full-video}; use {@code com.bidscube:bidscube-sdk-lite-no-video} for banner/image/native only.
          * Image, native, and banner flows are unchanged.
          */
-    public Builder videoAdsEnabled(boolean videoAdsEnabled) {
+        public Builder videoAdsEnabled(boolean videoAdsEnabled) {
             this.videoAdsEnabled = videoAdsEnabled;
+            return this;
+        }
+
+        /**
+         * When {@code true}, after video complete/skip the SDK auto-closes the fullscreen ad
+         * (releases player, no end card / last frame, fires {@code onAdClosed} once).
+         * When {@code false} (default): show Companion end card if present, otherwise keep the
+         * last video frame with a manual close button. Mini-game / post-video phases are not
+         * interrupted by linear video completion.
+         */
+        public Builder autoClose(boolean autoClose) {
+            this.autoClose = autoClose;
             return this;
         }
 

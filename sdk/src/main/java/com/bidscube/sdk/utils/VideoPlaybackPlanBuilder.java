@@ -1,5 +1,6 @@
 package com.bidscube.sdk.utils;
 
+import com.bidscube.sdk.models.video.VastCompanion;
 import com.bidscube.sdk.models.video.VastMediaFile;
 import com.bidscube.sdk.models.video.VastPreview;
 import com.bidscube.sdk.models.video.VastTrackingEvents;
@@ -301,32 +302,15 @@ public final class VideoPlaybackPlanBuilder {
     }
 
     private static VastPreview parseCompanionPreview(Element ad) {
-        NodeList companions = ad.getElementsByTagName("Companion");
-        if (companions.getLength() == 0) {
-            return null;
-        }
-        Element companion = (Element) companions.item(0);
-        String image = null;
-        NodeList staticResources = companion.getElementsByTagName("StaticResource");
-        if (staticResources.getLength() > 0) {
-            image = staticResources.item(0).getTextContent();
-        }
-        String click = null;
-        NodeList clickThrough = companion.getElementsByTagName("CompanionClickThrough");
-        if (clickThrough.getLength() > 0) {
-            click = clickThrough.item(0).getTextContent();
-        }
-        if (image == null || image.trim().isEmpty()) {
-            return null;
-        }
-        return new VastPreview(image.trim(), click != null ? click.trim() : null);
+        VastCompanion companion = VastParser.getBestCompanionFromAd(ad);
+        return VastPreview.fromCompanion(companion);
     }
 
     private static VastPreview resolveEndCardPreview(Document doc) {
         NodeList ads = doc.getElementsByTagName("Ad");
         for (int i = ads.getLength() - 1; i >= 0; i--) {
             VastPreview preview = parseCompanionPreview((Element) ads.item(i));
-            if (preview != null && preview.hasImage()) {
+            if (preview != null && preview.hasRenderableCompanion()) {
                 return preview;
             }
         }

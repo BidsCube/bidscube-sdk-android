@@ -1,6 +1,6 @@
 # OpenRTB 2.6 Podded Video (Android SDK)
 
-Internal reference for **OpenRTB-like podded response** support in the Bidscube Android SDK (**1.2.8**).
+Internal reference for **OpenRTB-like podded response** support in the Bidscube Android SDK (**1.2.9**).
 
 > **Scope:** response parsing + podded VAST playback only. The SDK does **not** build or `POST` OpenRTB bid requests (`imp`, `device`, `app`, etc.). `VideoAdUrlBuilder` still issues the legacy `GET` to the SSP; when the server returns JSON with `bids[]`, `openrtb.video`, `slotinpod`, etc., the SDK normalizes and plays the pod.
 

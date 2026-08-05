@@ -58,13 +58,24 @@ public final class DefaultGamifiedEndCard implements GamifiedEndCard {
             }
             return;
         }
-        if (config.hasPreviewImage()) {
-            VideoInterstitialUiHelper.showEndCard(
+        if (config.hasRenderableCompanion()) {
+            VideoInterstitialUiHelper.showCompanionEndCard(
                     context,
                     player,
                     container,
                     overlay,
-                    config.getPreviewImageUrl(),
+                    config.getCompanion() != null
+                            ? config.getCompanion()
+                            : (config.hasPreviewImage()
+                                    ? new com.bidscube.sdk.models.video.VastCompanion(
+                                            com.bidscube.sdk.models.video.VastCompanion.ResourceType.STATIC,
+                                            config.getPreviewImageUrl(),
+                                            config.getClickUrl(),
+                                            null,
+                                            null,
+                                            0,
+                                            0)
+                                    : null),
                     config.getClickUrl(),
                     config.getCtaText(),
                     config.getTitle(),

@@ -83,6 +83,7 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
                         deviceInfo,
                         config.getVideoPlayerProvider(),
                         config.isVideoAdsEnabled(),
+                        config.isAutoClose(),
                         VideoPodConfig.fromSdkConfig(config));
 
                 this.isInitialized = true;

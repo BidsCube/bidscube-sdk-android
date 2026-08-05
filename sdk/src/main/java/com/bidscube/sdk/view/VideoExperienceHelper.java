@@ -15,16 +15,19 @@ import com.bidscube.sdk.interfaces.AdCallback;
 import com.bidscube.sdk.models.enums.AdPosition;
 import com.bidscube.sdk.models.PlayableAdConfig;
 import com.bidscube.sdk.models.video.GamifiedEndCardConfig;
+import com.bidscube.sdk.models.video.VastCompanion;
+import com.bidscube.sdk.models.video.VastPreview;
 import com.bidscube.sdk.models.video.VideoAdSlot;
 import com.bidscube.sdk.models.video.VideoPlaybackPlan;
-import com.bidscube.sdk.models.video.VideoPlaybackPlanType;
 import com.bidscube.sdk.openrtb.PodDurationValidator;
 import com.bidscube.sdk.openrtb.PoddedPlaybackPlanBuilder;
 import com.bidscube.sdk.openrtb.VideoPodConfig;
 import com.bidscube.sdk.utils.SDKLogger;
 import com.bidscube.sdk.utils.VastParser;
 import com.bidscube.sdk.utils.VideoPlaybackPlanBuilder;
+import com.bidscube.sdk.video.PostVideoPolicy;
 import com.bidscube.sdk.video.RewardState;
+import com.bidscube.sdk.video.VideoUiDefaults;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -80,7 +83,7 @@ public final class VideoExperienceHelper {
             AdCallback callback,
             VideoPlayerProvider videoPlayerProvider) {
         showAdPodWithPlan(activity, placementId, plan, clickUrl, position, format, callback,
-                videoPlayerProvider, VideoPodConfig.defaults());
+                videoPlayerProvider, VideoPodConfig.defaults(), false);
     }
 
     /**
@@ -96,6 +99,26 @@ public final class VideoExperienceHelper {
             AdCallback callback,
             VideoPlayerProvider videoPlayerProvider,
             VideoPodConfig podConfig) {
+        showAdPodWithPlan(activity, placementId, plan, clickUrl, position, format, callback,
+                videoPlayerProvider, podConfig, false);
+    }
+
+    /**
+     * Shows a pre-built pod playback plan (VAST or OpenRTB-enriched) in a fullscreen dialog.
+     *
+     * @param autoClose when {@code true}, dismiss immediately after pod complete/skip
+     */
+    public static void showAdPodWithPlan(
+            Activity activity,
+            String placementId,
+            VideoPlaybackPlan plan,
+            String clickUrl,
+            AdPosition position,
+            VideoAdFormat format,
+            AdCallback callback,
+            VideoPlayerProvider videoPlayerProvider,
+            VideoPodConfig podConfig,
+            boolean autoClose) {
 
         if (plan == null || plan.isEmpty() || !plan.isPodPlayback()) {
             callback.onAdFailed(placementId, -1, "Not a playable ad pod");
@@ -120,6 +143,7 @@ public final class VideoExperienceHelper {
         AtomicBoolean legacySkippedEmitted = new AtomicBoolean(false);
         AtomicBoolean legacyStartedEmitted = new AtomicBoolean(false);
         AtomicBoolean podStartedEmitted = new AtomicBoolean(false);
+        AtomicBoolean closing = new AtomicBoolean(false);
         RewardState rewardState = new RewardState();
 
         String podId = plan.getOpenRtbPodContext() != null
@@ -162,43 +186,68 @@ public final class VideoExperienceHelper {
 
         GamifiedEndCard gamifiedEndCard = new DefaultGamifiedEndCard(activity, container, podPlayer, overlay);
 
-        Runnable showEndCard = () -> {
-            if (!endCardShown.compareAndSet(false, true)) {
+        Runnable closeAdSession = () -> {
+            if (!closing.compareAndSet(false, true)) {
                 return;
             }
-            if (!anyVideoPlayed.get()) {
-                SDKLogger.d(TAG, "Skipping end card — no video played successfully");
-                dialog.dismiss();
-                return;
-            }
-            if (!endCardConfig.hasPreviewImage()) {
-                SDKLogger.d(TAG, "Skipping end card — no companion preview in VAST");
+            activity.runOnUiThread(() -> {
                 try {
-                    podPlayer.release();
+                    gamifiedEndCard.destroy();
                 } catch (Throwable ignored) {
                 }
-                dialog.dismiss();
-                return;
-            }
-            overlay.hide();
-            gamifiedEndCard.show(endCardConfig, new GamifiedEndCard.Listener() {
-                @Override
-                public void onEndCardShown() {
-                    callback.onEndCardShown(placementId);
-                }
-
-                @Override
-                public void onCtaClicked(String ctaClickUrl) {
-                    callback.onAdClicked(placementId);
-                    callback.onInstallButtonClicked(placementId, endCardConfig.getCtaText());
-                    openClickUrl(activity, ctaClickUrl);
-                }
-
-                @Override
-                public void onCloseRequested() {
+                cleanupOverlay(podPlayer, overlay, null);
+                if (dialog.isShowing()) {
                     dialog.dismiss();
+                } else {
+                    emitAdClosed.run();
                 }
             });
+        };
+
+        Runnable showEndCard = () -> {
+            if (!anyVideoPlayed.get()) {
+                SDKLogger.d(TAG, "Skipping end card — no video played successfully");
+                closeAdSession.run();
+                return;
+            }
+            PostVideoPolicy.Action action = PostVideoPolicy.resolve(
+                    autoClose,
+                    endCardConfig.hasRenderableCompanion(),
+                    false);
+            SDKLogger.d(TAG, "Pod post-video action=" + action + " autoClose=" + autoClose);
+            switch (action) {
+                case AUTO_CLOSE:
+                    closeAdSession.run();
+                    return;
+                case SHOW_END_CARD:
+                    if (!endCardShown.compareAndSet(false, true)) {
+                        return;
+                    }
+                    overlay.hide();
+                    gamifiedEndCard.show(endCardConfig, new GamifiedEndCard.Listener() {
+                        @Override
+                        public void onEndCardShown() {
+                            callback.onEndCardShown(placementId);
+                        }
+
+                        @Override
+                        public void onCtaClicked(String ctaClickUrl) {
+                            callback.onAdClicked(placementId);
+                            callback.onInstallButtonClicked(placementId, endCardConfig.getCtaText());
+                            openClickUrl(activity, ctaClickUrl);
+                        }
+
+                        @Override
+                        public void onCloseRequested() {
+                            closeAdSession.run();
+                        }
+                    });
+                    return;
+                case KEEP_LAST_FRAME:
+                default:
+                    VideoInterstitialUiHelper.showLastFrameClose(overlay, closeAdSession);
+                    break;
+            }
         };
 
         overlay.setListener(new VideoInterstitialOverlay.Listener() {
@@ -209,7 +258,7 @@ public final class VideoExperienceHelper {
 
             @Override
             public void onCloseRequested() {
-                dialog.dismiss();
+                closeAdSession.run();
             }
         });
 
@@ -232,7 +281,7 @@ public final class VideoExperienceHelper {
                         placementId, podId, slot.getOpenRtbImpId(), slotInPod, total, slot.getAdId());
             }
             callback.onVideoAdStarted(placementId, current, total, slot.getAdId());
-            int clipSkip = slot.getSkipOffsetSeconds() > 0 ? slot.getSkipOffsetSeconds() : 3;
+            int clipSkip = VideoUiDefaults.resolveSkipOffsetSeconds(slot.getSkipOffsetSeconds());
             activity.runOnUiThread(() -> overlay.startSkipCountdown(clipSkip));
         });
 
@@ -299,7 +348,7 @@ public final class VideoExperienceHelper {
             public void onVideoError(String message) {
                 sessionEnd.compareAndSet(SessionEnd.NONE, SessionEnd.FAILED);
                 callback.onAdFailed(placementId, -1, message != null ? message : "ad pod error");
-                dialog.dismiss();
+                closeAdSession.run();
             }
         });
 
@@ -313,6 +362,7 @@ public final class VideoExperienceHelper {
                 sessionEnd.set(SessionEnd.SKIPPED);
                 callback.onVideoAdSkipped(placementId);
             }
+            closing.set(true);
             gamifiedEndCard.destroy();
             cleanupOverlay(podPlayer, overlay, null);
             emitAdClosed.run();
@@ -324,7 +374,8 @@ public final class VideoExperienceHelper {
         }
         SDKLogger.d(TAG, "Ad pod dialog shown, clips=" + plan.getTotalAds()
                 + " openRtbPodded=" + plan.isOpenRtbPodded()
-                + " podType=" + plan.getOpenRtbPodType());
+                + " podType=" + plan.getOpenRtbPodType()
+                + " autoClose=" + autoClose);
     }
 
     private static VideoAdSlot findSlotByIndex(VideoPlaybackPlan plan, int adIndex) {
@@ -346,6 +397,25 @@ public final class VideoExperienceHelper {
             VideoAdFormat format,
             AdCallback callback,
             VideoPlayerProvider videoPlayerProvider) {
+        showGamifiedInDialog(activity, placementId, adm, clickUrl, position, format, callback,
+                videoPlayerProvider, false);
+    }
+
+    /**
+     * Gamified experience: intro video → playable mini-game → end card / last frame / auto-close.
+     *
+     * @param autoClose when {@code true}, closes after the full session (post mini-game), not after intro
+     */
+    public static void showGamifiedInDialog(
+            Activity activity,
+            String placementId,
+            String adm,
+            String clickUrl,
+            AdPosition position,
+            VideoAdFormat format,
+            AdCallback callback,
+            VideoPlayerProvider videoPlayerProvider,
+            boolean autoClose) {
 
         PlayableAdConfig playableConfig = VastParser.parsePlayableConfig(adm);
         if (playableConfig == null) {
@@ -358,6 +428,7 @@ public final class VideoExperienceHelper {
         AtomicBoolean endCardShown = new AtomicBoolean(false);
         AtomicBoolean playableStarted = new AtomicBoolean(false);
         AtomicBoolean introCompleted = new AtomicBoolean(false);
+        AtomicBoolean closing = new AtomicBoolean(false);
         RewardState rewardState = new RewardState();
 
         Runnable emitAdClosed = () -> {
@@ -366,11 +437,14 @@ public final class VideoExperienceHelper {
             }
         };
 
-        String companionImage = VastParser.getCompanionImageUrl(adm);
-        String endCardClick = firstNonEmpty(VastParser.getCompanionClickThroughUrl(adm), clickUrl);
+        VastCompanion companion = VastParser.getBestCompanion(adm);
+        String endCardClick = firstNonEmpty(
+                companion != null ? companion.getClickThroughUrl() : null,
+                firstNonEmpty(VastParser.getCompanionClickThroughUrl(adm), clickUrl));
         int skipOffset = VastParser.getSkipOffsetSeconds(adm);
+        VastPreview companionPreview = VastPreview.fromCompanion(companion);
         GamifiedEndCardConfig endCardConfig = GamifiedEndCardConfig.fromPreview(
-                companionImage != null ? new com.bidscube.sdk.models.video.VastPreview(companionImage, endCardClick) : null,
+                companionPreview,
                 "Install Now",
                 endCardClick);
 
@@ -387,51 +461,86 @@ public final class VideoExperienceHelper {
         Runnable[] stopPlayableRef = new Runnable[1];
         GamifiedEndCard[] endCardRef = new GamifiedEndCard[1];
 
-        Runnable showEndCard = () -> {
-            if (!endCardShown.compareAndSet(false, true)) {
+        Runnable closeAdSession = () -> {
+            if (!closing.compareAndSet(false, true)) {
                 return;
             }
-            BidscubeVideoAdPlayer player = playerRef[0];
-            if (player == null && !endCardConfig.hasPreviewImage()) {
-                dialog.dismiss();
-                return;
-            }
-            overlay.hide();
-            endCardRef[0] = new DefaultGamifiedEndCard(activity, container, player, overlay);
-            if (!endCardConfig.hasPreviewImage()) {
-                SDKLogger.d(TAG, "Skipping end card — no companion preview in VAST");
-                if (player != null) {
+            activity.runOnUiThread(() -> {
+                if (endCardRef[0] != null) {
+                    endCardRef[0].destroy();
+                }
+                if (stopPlayableRef[0] != null) {
                     try {
-                        player.release();
+                        stopPlayableRef[0].run();
                     } catch (Throwable ignored) {
                     }
                 }
-                dialog.dismiss();
-                return;
-            }
-            endCardRef[0].show(endCardConfig, new GamifiedEndCard.Listener() {
-                @Override
-                public void onEndCardShown() {
-                    callback.onEndCardShown(placementId);
-                }
-
-                @Override
-                public void onCtaClicked(String ctaClickUrl) {
-                    callback.onAdClicked(placementId);
-                    callback.onInstallButtonClicked(placementId, endCardConfig.getCtaText());
-                    openClickUrl(activity, ctaClickUrl);
-                }
-
-                @Override
-                public void onCloseRequested() {
+                cleanupOverlay(playerRef[0], overlay, null);
+                if (dialog.isShowing()) {
                     dialog.dismiss();
+                } else {
+                    emitAdClosed.run();
                 }
             });
+        };
+
+        Runnable showEndCard = () -> {
+            // After mini-game (or if playable skipped): apply autoClose / companion / keep UI.
+            PostVideoPolicy.Action action = PostVideoPolicy.resolve(
+                    autoClose,
+                    endCardConfig.hasRenderableCompanion(),
+                    false);
+            SDKLogger.d(TAG, "Gamified post-session action=" + action + " autoClose=" + autoClose);
+            switch (action) {
+                case AUTO_CLOSE:
+                    closeAdSession.run();
+                    return;
+                case SHOW_END_CARD:
+                    if (!endCardShown.compareAndSet(false, true)) {
+                        return;
+                    }
+                    BidscubeVideoAdPlayer player = playerRef[0];
+                    overlay.hide();
+                    endCardRef[0] = new DefaultGamifiedEndCard(activity, container, player, overlay);
+                    endCardRef[0].show(endCardConfig, new GamifiedEndCard.Listener() {
+                        @Override
+                        public void onEndCardShown() {
+                            callback.onEndCardShown(placementId);
+                        }
+
+                        @Override
+                        public void onCtaClicked(String ctaClickUrl) {
+                            callback.onAdClicked(placementId);
+                            callback.onInstallButtonClicked(placementId, endCardConfig.getCtaText());
+                            openClickUrl(activity, ctaClickUrl);
+                        }
+
+                        @Override
+                        public void onCloseRequested() {
+                            closeAdSession.run();
+                        }
+                    });
+                    return;
+                case KEEP_LAST_FRAME:
+                default:
+                    // Player already released for playable; keep container + manual close.
+                    overlay.setCloseButtonDismissesAd(true);
+                    VideoInterstitialUiHelper.showLastFrameClose(overlay, closeAdSession);
+                    break;
+            }
         };
 
         Runnable startPlayable = () -> {
             if (playableStarted.compareAndSet(false, true)) {
                 activity.runOnUiThread(() -> {
+                    // Linear video ended — do NOT auto-close; continue mini-game.
+                    PostVideoPolicy.Action introAction = PostVideoPolicy.resolve(
+                            autoClose,
+                            endCardConfig.hasRenderableCompanion(),
+                            true);
+                    if (introAction != PostVideoPolicy.Action.CONTINUE_POST_VIDEO) {
+                        SDKLogger.w(TAG, "Unexpected intro post-video action=" + introAction);
+                    }
                     overlay.hide();
                     if (playerRef[0] != null) {
                         try {
@@ -517,6 +626,8 @@ public final class VideoExperienceHelper {
                 } else if (stopPlayableRef[0] != null) {
                     stopPlayableRef[0].run();
                     showEndCard.run();
+                } else {
+                    closeAdSession.run();
                 }
             }
         });
@@ -550,7 +661,7 @@ public final class VideoExperienceHelper {
                 @Override
                 public void onVideoStarted() {
                     callback.onVideoAdStarted(placementId);
-                    int countdown = skipOffset > 0 ? skipOffset : 5;
+                    int countdown = VideoUiDefaults.resolveSkipOffsetSeconds(skipOffset);
                     activity.runOnUiThread(() -> overlay.startSkipCountdown(countdown));
                 }
 
@@ -563,7 +674,7 @@ public final class VideoExperienceHelper {
                 public void onVideoError(String message) {
                     sessionEnd.compareAndSet(SessionEnd.NONE, SessionEnd.FAILED);
                     callback.onAdFailed(placementId, -1, message != null ? message : "video error");
-                    dialog.dismiss();
+                    closeAdSession.run();
                 }
             });
             player.playVast(adm, false);
@@ -574,6 +685,7 @@ public final class VideoExperienceHelper {
                 sessionEnd.set(SessionEnd.SKIPPED);
                 callback.onVideoAdSkipped(placementId);
             }
+            closing.set(true);
             if (endCardRef[0] != null) {
                 endCardRef[0].destroy();
             }
@@ -588,40 +700,7 @@ public final class VideoExperienceHelper {
         if (position == AdPosition.FULL_SCREEN) {
             configureFullscreen(dialog);
         }
-        SDKLogger.d(TAG, "Gamified video dialog shown");
-    }
-
-    private static void showEndCardInternal(
-            Activity activity,
-            BidscubeVideoAdPlayer player,
-            FrameLayout container,
-            VideoInterstitialOverlay overlay,
-            String imageUrl,
-            String clickUrl,
-            Runnable onEndCardShown,
-            Runnable onEndCardClicked,
-            Runnable onClose) {
-        if (imageUrl == null || imageUrl.trim().isEmpty()) {
-            SDKLogger.d(TAG, "Skipping end card — no companion preview in VAST");
-            try {
-                player.release();
-            } catch (Throwable ignored) {
-            }
-            if (onClose != null) {
-                onClose.run();
-            }
-            return;
-        }
-        VideoInterstitialUiHelper.showEndCard(
-                activity,
-                player,
-                container,
-                overlay,
-                imageUrl,
-                clickUrl,
-                onEndCardShown,
-                onEndCardClicked,
-                onClose);
+        SDKLogger.d(TAG, "Gamified video dialog shown autoClose=" + autoClose);
     }
 
     private static Dialog createDialog(Activity activity, AdPosition position) {

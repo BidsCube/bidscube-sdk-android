@@ -37,6 +37,7 @@ import com.bidscube.sdk.network.BidscubeResponse;
 import com.bidscube.sdk.network.NativeAdParser;
 import com.bidscube.sdk.utils.AdmPayloadUtils;
 import com.bidscube.sdk.utils.VastParser;
+import com.bidscube.sdk.models.video.VastCompanion;
 import com.bidscube.sdk.models.video.VideoPlaybackPlan;
 import com.bidscube.sdk.models.video.VideoPlaybackPlanType;
 import com.bidscube.sdk.openrtb.VideoPodResponseResolver;
@@ -44,6 +45,9 @@ import com.bidscube.sdk.openrtb.VideoPodConfig;
 import com.bidscube.sdk.utils.VideoPlaybackPlanBuilder;
 import com.bidscube.sdk.config.VideoPlayerProvider;
 import com.bidscube.sdk.utils.SDKLogger;
+import com.bidscube.sdk.video.PostVideoPolicy;
+import com.bidscube.sdk.video.RewardState;
+import com.bidscube.sdk.video.VideoUiDefaults;
 import com.bidscube.sdk.view.BannerViewFactory;
 import com.bidscube.sdk.view.BidscubeVideoAdPlayer;
 import com.bidscube.sdk.view.ImaNativeSkipBlocker;
@@ -66,6 +70,7 @@ import java.lang.reflect.Field;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -111,6 +116,7 @@ public class AdDisplayManager {
     private final DeviceInfo deviceInfo;
     private final VideoPlayerProvider videoPlayerProvider;
     private final boolean videoAdsEnabled;
+    private final boolean autoClose;
 
     private WebView currentBanner = null;
     private BidscubeVideoAdPlayer currentVideoPlayer = null;
@@ -118,16 +124,22 @@ public class AdDisplayManager {
 
     private FrameLayout overlayContainer;
 
-    private AdPosition currentAdPosition = AdPosition.UNKNOWN;
+    private AdPosition currentAdPosition = AdPosition.FULL_SCREEN;
     private AdPosition responseAdPosition = AdPosition.UNKNOWN;
     private final VideoPodConfig videoPodConfig;
 
     public AdDisplayManager(Context context, DeviceInfo deviceInfo, VideoPlayerProvider videoPlayerProvider,
             boolean videoAdsEnabled, VideoPodConfig videoPodConfig) {
+        this(context, deviceInfo, videoPlayerProvider, videoAdsEnabled, false, videoPodConfig);
+    }
+
+    public AdDisplayManager(Context context, DeviceInfo deviceInfo, VideoPlayerProvider videoPlayerProvider,
+            boolean videoAdsEnabled, boolean autoClose, VideoPodConfig videoPodConfig) {
         this.context = context;
         this.deviceInfo = deviceInfo;
         this.videoPlayerProvider = videoPlayerProvider;
         this.videoAdsEnabled = videoAdsEnabled;
+        this.autoClose = autoClose;
         this.videoPodConfig = videoPodConfig != null ? videoPodConfig : VideoPodConfig.defaults();
     }
 
@@ -741,7 +753,7 @@ public class AdDisplayManager {
                         + " podType=" + playbackPlan.getOpenRtbPodType());
                 VideoExperienceHelper.showAdPodWithPlan(
                         activity, placementId, playbackPlan, vastRedirectUrl, effectivePosition,
-                        format, callback, videoPlayerProvider, videoPodConfig);
+                        format, callback, videoPlayerProvider, videoPodConfig, autoClose);
                 return;
             }
             if (adm == null || adm.trim().isEmpty()) {
@@ -751,7 +763,8 @@ public class AdDisplayManager {
             if (VastParser.hasPlayableExtension(adm)) {
                 SDKLogger.d(TAG, "Routing to gamified playable experience");
                 VideoExperienceHelper.showGamifiedInDialog(
-                        activity, placementId, adm, vastRedirectUrl, effectivePosition, format, callback, videoPlayerProvider);
+                        activity, placementId, adm, vastRedirectUrl, effectivePosition, format,
+                        callback, videoPlayerProvider, autoClose);
                 return;
             }
 
@@ -773,8 +786,11 @@ public class AdDisplayManager {
             Activity activity) {
 
         final AtomicReference<VideoSessionEnd> sessionEnd = new AtomicReference<>(VideoSessionEnd.NONE);
-        final AtomicReference<Boolean> adClosedEmitted = new AtomicReference<>(false);
-        final AtomicReference<Boolean> endCardShown = new AtomicReference<>(false);
+        final AtomicBoolean adClosedEmitted = new AtomicBoolean(false);
+        final AtomicBoolean endCardShown = new AtomicBoolean(false);
+        final AtomicBoolean videoCompletedEmitted = new AtomicBoolean(false);
+        final AtomicBoolean closing = new AtomicBoolean(false);
+        final RewardState rewardState = new RewardState();
 
         Runnable emitAdClosed = () -> {
             if (adClosedEmitted.compareAndSet(false, true)) {
@@ -782,9 +798,10 @@ public class AdDisplayManager {
             }
         };
 
-        final String companionImageUrl = VastParser.getCompanionImageUrl(adm);
+        final VastCompanion companion = VastParser.getBestCompanion(adm);
         final String endCardClickUrl = firstNonEmpty(
-                VastParser.getCompanionClickThroughUrl(adm), vastRedirectUrl);
+                companion != null ? companion.getClickThroughUrl() : null,
+                firstNonEmpty(VastParser.getCompanionClickThroughUrl(adm), vastRedirectUrl));
         final int skipOffsetSeconds = VastParser.getSkipOffsetSeconds(adm);
 
         final boolean fullscreen = effectivePosition == AdPosition.FULL_SCREEN;
@@ -823,19 +840,62 @@ public class AdDisplayManager {
         final VideoInterstitialOverlay overlay = VideoInterstitialOverlay.attach(frameContainer);
         final ImaNativeSkipBlocker imaSkipBlocker = ImaNativeSkipBlocker.attach(frameContainer);
 
-        Runnable showEndCard = () -> {
-            if (!endCardShown.compareAndSet(false, true)) {
+        /** Centralized close: release player, remove overlays/end card, dismiss, close callback once. */
+        Runnable closeAdSession = () -> {
+            if (!closing.compareAndSet(false, true)) {
                 return;
             }
-            showVideoEndCard(
-                    videoPlayer,
-                    frameContainer,
-                    overlay,
-                    companionImageUrl,
-                    endCardClickUrl,
-                    () -> callback.onEndCardShown(placementId),
-                    () -> callback.onAdClicked(placementId),
-                    dialog::dismiss);
+            activity.runOnUiThread(() -> {
+                try {
+                    overlay.detach();
+                } catch (Throwable ignored) {
+                }
+                try {
+                    imaSkipBlocker.detach();
+                } catch (Throwable ignored) {
+                }
+                try {
+                    videoPlayer.release();
+                } catch (Throwable ignored) {
+                }
+                currentVideoPlayer = null;
+                if (dialog.isShowing()) {
+                    dialog.dismiss();
+                } else {
+                    emitAdClosed.run();
+                }
+            });
+        };
+
+        Runnable handlePostVideo = () -> {
+            PostVideoPolicy.Action action = PostVideoPolicy.resolve(
+                    autoClose,
+                    PostVideoPolicy.hasRenderableCompanion(companion),
+                    false);
+            SDKLogger.d(TAG, "Post-video action=" + action + " autoClose=" + autoClose);
+            switch (action) {
+                case AUTO_CLOSE:
+                    closeAdSession.run();
+                    break;
+                case SHOW_END_CARD:
+                    if (!endCardShown.compareAndSet(false, true)) {
+                        return;
+                    }
+                    showVideoEndCard(
+                            videoPlayer,
+                            frameContainer,
+                            overlay,
+                            companion,
+                            endCardClickUrl,
+                            () -> callback.onEndCardShown(placementId),
+                            () -> callback.onAdClicked(placementId),
+                            closeAdSession);
+                    break;
+                case KEEP_LAST_FRAME:
+                default:
+                    VideoInterstitialUiHelper.showLastFrameClose(overlay, closeAdSession);
+                    break;
+            }
         };
 
         overlay.setListener(new VideoInterstitialOverlay.Listener() {
@@ -846,7 +906,7 @@ public class AdDisplayManager {
 
             @Override
             public void onCloseRequested() {
-                dialog.dismiss();
+                closeAdSession.run();
             }
         });
 
@@ -865,14 +925,14 @@ public class AdDisplayManager {
             @Override
             public void onVideoCompleted() {
                 if (sessionEnd.compareAndSet(VideoSessionEnd.NONE, VideoSessionEnd.COMPLETED)) {
-                    callback.onVideoAdCompleted(placementId);
-                    if (format == VideoAdFormat.REWARDED) {
-                        callback.onUserRewarded(placementId);
+                    if (videoCompletedEmitted.compareAndSet(false, true)) {
+                        callback.onVideoAdCompleted(placementId);
                     }
+                    rewardState.maybeRewardStandardComplete(format, callback, placementId);
                 }
                 activity.runOnUiThread(() -> {
                     imaSkipBlocker.hide();
-                    showEndCard.run();
+                    handlePostVideo.run();
                 });
             }
 
@@ -883,14 +943,14 @@ public class AdDisplayManager {
                 }
                 activity.runOnUiThread(() -> {
                     imaSkipBlocker.hide();
-                    showEndCard.run();
+                    handlePostVideo.run();
                 });
             }
 
             @Override
             public void onVideoStarted() {
                 callback.onVideoAdStarted(placementId);
-                int countdownSeconds = skipOffsetSeconds > 0 ? skipOffsetSeconds : 5;
+                int countdownSeconds = VideoUiDefaults.resolveSkipOffsetSeconds(skipOffsetSeconds);
                 activity.runOnUiThread(() -> {
                     overlay.startSkipCountdown(countdownSeconds);
                     imaSkipBlocker.show(overlay);
@@ -917,9 +977,7 @@ public class AdDisplayManager {
                 if (sessionEnd.compareAndSet(VideoSessionEnd.NONE, VideoSessionEnd.FAILED)) {
                     callback.onAdFailed(placementId, -1, msg);
                 }
-                if (dialog.isShowing()) {
-                    dialog.dismiss();
-                }
+                closeAdSession.run();
             }
         });
 
@@ -934,6 +992,7 @@ public class AdDisplayManager {
                 sessionEnd.set(VideoSessionEnd.SKIPPED);
                 callback.onVideoAdSkipped(placementId);
             }
+            closing.set(true);
             try {
                 overlay.detach();
             } catch (Throwable ignored) {
@@ -953,7 +1012,9 @@ public class AdDisplayManager {
         dialog.show();
         currentVideoPlayer = videoPlayer;
 
-        SDKLogger.d(TAG, "Video ad dialog shown (fullscreen=" + fullscreen + ", skipOffset=" + skipOffsetSeconds + ")");
+        SDKLogger.d(TAG, "Video ad dialog shown (fullscreen=" + fullscreen
+                + ", skipOffset=" + skipOffsetSeconds
+                + ", autoClose=" + autoClose + ")");
     }
 
     private static String resolveVideoClickThroughUrl(
@@ -1047,7 +1108,7 @@ public class AdDisplayManager {
         SDKLogger.v("VastResponse", adm);
         VastParser.analyzeVast(adm);
         String vastRedirectUrl = VastParser.getClickThroughUrl(adm);
-        String companionImageUrl = VastParser.getCompanionImageUrl(adm);
+        VastCompanion companion = VastParser.getBestCompanion(adm);
         String endCardClickUrl = firstNonEmpty(VastParser.getCompanionClickThroughUrl(adm), vastRedirectUrl);
         int skipOffsetSeconds = VastParser.getSkipOffsetSeconds(adm);
 
@@ -1100,12 +1161,34 @@ public class AdDisplayManager {
         videoPlayer.setOnVideoCompletionListener(new BidscubeVideoAdPlayer.VideoCompletionListener() {
             @Override
             public void onVideoCompleted() {
-                showVideoEndCard(videoPlayer, mainContainer, overlay, companionImageUrl, endCardClickUrl, null, null, dialog::dismiss);
+                PostVideoPolicy.Action action = PostVideoPolicy.resolve(
+                        autoClose,
+                        PostVideoPolicy.hasRenderableCompanion(companion),
+                        false);
+                if (action == PostVideoPolicy.Action.AUTO_CLOSE) {
+                    dialog.dismiss();
+                } else if (action == PostVideoPolicy.Action.SHOW_END_CARD) {
+                    showVideoEndCard(videoPlayer, mainContainer, overlay, companion, endCardClickUrl,
+                            null, null, dialog::dismiss);
+                } else {
+                    VideoInterstitialUiHelper.showLastFrameClose(overlay, dialog::dismiss);
+                }
             }
 
             @Override
             public void onVideoSkipped() {
-                showVideoEndCard(videoPlayer, mainContainer, overlay, companionImageUrl, endCardClickUrl, null, null, dialog::dismiss);
+                PostVideoPolicy.Action action = PostVideoPolicy.resolve(
+                        autoClose,
+                        PostVideoPolicy.hasRenderableCompanion(companion),
+                        false);
+                if (action == PostVideoPolicy.Action.AUTO_CLOSE) {
+                    dialog.dismiss();
+                } else if (action == PostVideoPolicy.Action.SHOW_END_CARD) {
+                    showVideoEndCard(videoPlayer, mainContainer, overlay, companion, endCardClickUrl,
+                            null, null, dialog::dismiss);
+                } else {
+                    VideoInterstitialUiHelper.showLastFrameClose(overlay, dialog::dismiss);
+                }
             }
 
         });
@@ -1116,28 +1199,22 @@ public class AdDisplayManager {
             BidscubeVideoAdPlayer player,
             FrameLayout container,
             VideoInterstitialOverlay overlay,
-            String imageUrl,
+            VastCompanion companion,
             String clickUrl,
             Runnable onEndCardShown,
             Runnable onEndCardClicked,
             Runnable onClose) {
-        if (imageUrl == null || imageUrl.trim().isEmpty()) {
-            SDKLogger.d(TAG, "Skipping end card — no companion preview in VAST");
-            try {
-                player.release();
-            } catch (Throwable ignored) {
-            }
-            if (onClose != null) {
-                onClose.run();
-            }
+        if (!PostVideoPolicy.hasRenderableCompanion(companion)) {
+            SDKLogger.d(TAG, "No companion — keeping last frame instead of end card");
+            VideoInterstitialUiHelper.showLastFrameClose(overlay, onClose);
             return;
         }
-        VideoInterstitialUiHelper.showEndCard(
+        VideoInterstitialUiHelper.showCompanionEndCard(
                 context,
                 player,
                 container,
                 overlay,
-                imageUrl,
+                companion,
                 clickUrl,
                 onEndCardShown,
                 onEndCardClicked,
@@ -1146,7 +1223,10 @@ public class AdDisplayManager {
 
     /** @deprecated Use {@link #showVideoEndCard} via production video flow. */
     private void showFinalAdScreen(BidscubeVideoAdPlayer player, FrameLayout container, String imageUrl, String clickUrl) {
-        showVideoEndCard(player, container, null, imageUrl, clickUrl, null, null, null);
+        VastCompanion companion = imageUrl != null && !imageUrl.trim().isEmpty()
+                ? new VastCompanion(VastCompanion.ResourceType.STATIC, imageUrl, clickUrl, null, null, 0, 0)
+                : null;
+        showVideoEndCard(player, container, null, companion, clickUrl, null, null, null);
     }
 
     /**

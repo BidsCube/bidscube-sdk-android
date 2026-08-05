@@ -8,7 +8,7 @@
 
             <Creatives>
                 <Creative id="1" sequence="1">
-                    <Linear skipoffset="00:00:15">
+                    <Linear skipoffset="00:00:05">
                         <Duration>00:00:30</Duration>
                         <TrackingEvents>
                             <Tracking event="start"><![CDATA[https://example.com/start]]></Tracking>

@@ -12,11 +12,10 @@ public final class VideoUiDefaults {
     }
 
     /**
-     * @param vastSkipOffsetSeconds value from VAST ({@code 0} if missing)
-     * @return skip delay of at least {@link #DEFAULT_SKIP_OFFSET_SECONDS} (15s)
+     * @param vastSkipOffsetSeconds value from VAST ({@code 0} if missing / not skippable)
+     * @return VAST value when positive, otherwise {@link #DEFAULT_SKIP_OFFSET_SECONDS} (15s)
      */
     public static int resolveSkipOffsetSeconds(int vastSkipOffsetSeconds) {
-        int fromVast = vastSkipOffsetSeconds > 0 ? vastSkipOffsetSeconds : DEFAULT_SKIP_OFFSET_SECONDS;
-        return Math.max(fromVast, DEFAULT_SKIP_OFFSET_SECONDS);
+        return vastSkipOffsetSeconds > 0 ? vastSkipOffsetSeconds : DEFAULT_SKIP_OFFSET_SECONDS;
     }
 }

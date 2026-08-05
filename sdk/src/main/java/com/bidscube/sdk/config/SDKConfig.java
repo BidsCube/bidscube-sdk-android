@@ -183,10 +183,10 @@ public class SDKConfig {
     }
 
     /**
-     * Get the SDK version from environment variable or default to 1.2.10
+     * Get the SDK version from environment variable or default to 1.2.11
      */
     private static String getSDKVersion() {
-        return System.getenv().getOrDefault("BidscubeVersion", "1.2.10");
+        return System.getenv().getOrDefault("BidscubeVersion", "1.2.11");
     }
 
     /**

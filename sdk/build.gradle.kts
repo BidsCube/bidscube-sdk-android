@@ -18,7 +18,7 @@ version =
                     .getProperty("bidscube.version")
             } else null
         }
-        ?: "1.2.10"
+        ?: "1.2.11"
 
 android {
     namespace = "com.bidscube.sdk"

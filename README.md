@@ -35,9 +35,9 @@ repositories {
 
 dependencies {
     // Published Maven artifacts (see sdk/build.gradle.kts):
-    implementation("com.bidscube:bidscube-sdk-full-video:1.2.10@aar")
+    implementation("com.bidscube:bidscube-sdk-full-video:1.2.11@aar")
     // Image/native/banner only — no Media3/IMA:
-    // implementation("com.bidscube:bidscube-sdk-lite-no-video:1.2.10@aar")
+    // implementation("com.bidscube:bidscube-sdk-lite-no-video:1.2.11@aar")
 }
 ```
 
@@ -61,7 +61,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.bidscube:bidscube-sdk-full-video:1.2.10'
+    implementation 'com.bidscube:bidscube-sdk-full-video:1.2.11'
 }
 ```
 
@@ -619,11 +619,15 @@ This SDK is protected under the MIT License. For full license terms, please refe
 
 ## Version
 
-This README and examples are updated for Bidscube SDK version 1.2.10.
+This README and examples are updated for Bidscube SDK version 1.2.11.
+
+## What's new in 1.2.11 (user-facing)
+
+- **Skip UI:** default skip countdown is **15s** only when VAST omits `skipoffset`; if VAST sends e.g. `00:00:05`, that value is used.
 
 ## What's new in 1.2.10 (user-facing)
 
-- **Skip UI:** enforce minimum **15s** skip countdown (overrides shorter VAST `skipoffset`); countdown shown during playback (`Skip in N`), not only close at end.
+- Skip countdown shown during playback (`Skip in N`).
 
 ## What's new in 1.2.9 (user-facing)
 

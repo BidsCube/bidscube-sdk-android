@@ -7,7 +7,8 @@ import static org.junit.Assert.assertEquals;
 public class VideoUiDefaultsTest {
 
     @Test
-    public void resolveSkipOffset_usesVastWhenAboveDefault() {
+    public void resolveSkipOffset_usesVastWhenPositive() {
+        assertEquals(5, VideoUiDefaults.resolveSkipOffsetSeconds(5));
         assertEquals(20, VideoUiDefaults.resolveSkipOffsetSeconds(20));
     }
 
@@ -15,11 +16,5 @@ public class VideoUiDefaultsTest {
     public void resolveSkipOffset_defaultsTo15WhenMissing() {
         assertEquals(15, VideoUiDefaults.resolveSkipOffsetSeconds(0));
         assertEquals(15, VideoUiDefaults.resolveSkipOffsetSeconds(-1));
-    }
-
-    @Test
-    public void resolveSkipOffset_enforcesMinimum15() {
-        assertEquals(15, VideoUiDefaults.resolveSkipOffsetSeconds(5));
-        assertEquals(15, VideoUiDefaults.resolveSkipOffsetSeconds(1));
     }
 }

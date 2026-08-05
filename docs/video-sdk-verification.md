@@ -2,7 +2,7 @@
 
 Universal checklist for **Android, iOS, Unity, and mediation wrappers**. Logic is the same: inspect the creative, see which player the SDK chose, and confirm the host app has the required dependencies.
 
-**Android SDK version:** 1.2.9 (`version.properties`).
+**Android SDK version:** 1.2.10 (`version.properties`).
 
 ---
 
@@ -159,7 +159,7 @@ BidscubeSDK.initialize(context, config);
 
 ```
 1. adm — InLine + MediaFile mp4 OR OpenRTB bids with adm?
-2. SDK — fullVideo 1.2.9+?
+2. SDK — fullVideo 1.2.10+?
 3. BidscubeSDK.initialize + videoAdsEnabled(true)?
 4. Logs — Media3 vs IMA vs VastAdPodPlayer?
 5. Manual AAR — Media3 + IMA deps present?

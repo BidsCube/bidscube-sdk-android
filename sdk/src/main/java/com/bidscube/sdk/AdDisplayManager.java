@@ -1142,7 +1142,7 @@ public class AdDisplayManager {
         dialog.setContentView(mainContainer);
 
         VideoInterstitialOverlay overlay = VideoInterstitialOverlay.attach(mainContainer);
-        overlay.hide();
+        final int countdownSeconds = VideoUiDefaults.resolveSkipOffsetSeconds(skipOffsetSeconds);
 
         overlay.setListener(new VideoInterstitialOverlay.Listener() {
             @Override
@@ -1189,6 +1189,11 @@ public class AdDisplayManager {
                 } else {
                     VideoInterstitialUiHelper.showLastFrameClose(overlay, dialog::dismiss);
                 }
+            }
+
+            @Override
+            public void onVideoStarted() {
+                overlay.startSkipCountdown(countdownSeconds);
             }
 
         });

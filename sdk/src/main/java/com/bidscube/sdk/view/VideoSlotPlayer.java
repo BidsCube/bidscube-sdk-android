@@ -22,6 +22,9 @@ public interface VideoSlotPlayer {
         void onSkipped(VideoAdSlot slot);
 
         void onError(VideoAdSlot slot, Throwable error);
+
+        /** First painted video frame (may be absent on some emulator surfaces). */
+        default void onFirstFrame(VideoAdSlot slot) {}
     }
 
     View getView();

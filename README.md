@@ -14,6 +14,7 @@ A comprehensive Android SDK for displaying various types of ads including image 
 
 - [Custom ad rendering guide](docs/guide.md)
 - [Video SDK verification checklist (Android / iOS / Unity)](docs/video-sdk-verification.md)
+- [Android TV + interstitial vs rewarded](docs/android-tv-interstitial-rewarded.md) — Leanback/TV fullscreen & remote UX; interstitial Skip schedule; rewarded no-Skip / Back confirm / reward-once rules
 
 ## Quick Start
 
@@ -246,6 +247,17 @@ Legacy single-video callbacks fire for the whole session. Indexed callbacks fire
 | `onVideoPodStarted` / `onVideoPodSlot*` / `onVideoPodCompleted` | OpenRTB-enriched pods only |
 
 Interstitial video never calls `onUserRewarded`. Rewarded pod must complete all slots without skip to reward.
+
+**Interstitial Skip:** when VAST omits `skipoffset`, Skip arms after **15s**; `0`/`00:00:00` → immediate; otherwise VAST time/percent. Rewarded never shows Skip.
+
+**Android TV:** Leanback devices open video dialogs fullscreen by default (`FullscreenPolicy.AUTO`). Override with:
+
+```java
+BidscubeSDK.setVideoFullscreenPolicy(VideoUiDefaults.FullscreenPolicy.AUTO);
+// BidscubeSDK.setVideoFullscreenPolicy(VideoUiDefaults.FullscreenPolicy.FORCE_WINDOWED); // QA
+```
+
+Full rules (TV remote, interstitial vs rewarded, stall timeout): [docs/android-tv-interstitial-rewarded.md](docs/android-tv-interstitial-rewarded.md).
 
 ### Native Ads
 

@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -70,6 +71,7 @@ public class BannerViewFactory {
         int minHeightPx = (int) (minHeightDp * context.getResources().getDisplayMetrics().density + 0.5f);
         try { webView.setMinimumHeight(minHeightPx); } catch (Throwable ignored) {}
         try { webView.setVisibility(android.view.View.VISIBLE); } catch (Throwable ignored) {}
+        applyTelevisionFocusIfNeeded(context, webView);
 
         // Disable scrollbars and prevent WebView fling/scroll gestures from moving the parent ScrollView
         try { webView.setVerticalScrollBarEnabled(false); webView.setHorizontalScrollBarEnabled(false); } catch (Throwable ignored) {}
@@ -350,9 +352,8 @@ public class BannerViewFactory {
             String finalHtml = sb.toString();
             SDKLogger.d("BannerViewFactory", "Loading finalHtml length=" + finalHtml.length());
 
-            // Use a non-null base URL so relative resources and external script tags are allowed to load.
-            String base = "https://adcontent.local/";
-            webView.loadDataWithBaseURL(base, finalHtml, "text/html", "utf-8", null);
+            // baseURL null matches iOS WKWebView loadHTMLString(..., baseURL: nil).
+            webView.loadDataWithBaseURL(null, finalHtml, "text/html", "utf-8", null);
 
         });
 
@@ -391,6 +392,7 @@ public class BannerViewFactory {
         int minHeightPx = (int) (minHeightDp * context.getResources().getDisplayMetrics().density + 0.5f);
         try { webView.setMinimumHeight(minHeightPx); } catch (Throwable ignored) {}
         try { webView.setVisibility(android.view.View.VISIBLE); } catch (Throwable ignored) {}
+        applyTelevisionFocusIfNeeded(context, webView);
 
         // Disable scrollbars and prevent WebView fling/scroll gestures from moving the parent ScrollView
         try { webView.setVerticalScrollBarEnabled(false); webView.setHorizontalScrollBarEnabled(false); } catch (Throwable ignored) {}
@@ -671,12 +673,38 @@ public class BannerViewFactory {
             String finalHtml = sb.toString();
             SDKLogger.d("BannerViewFactory", "Loading finalHtml length=" + finalHtml.length());
 
-            // Use a non-null base URL so relative resources and external script tags are allowed to load.
-            String base = "https://adcontent.local/";
-            webView.loadDataWithBaseURL(base, finalHtml, "text/html", "utf-8", null);
+            // baseURL null matches iOS WKWebView loadHTMLString(..., baseURL: nil).
+            webView.loadDataWithBaseURL(null, finalHtml, "text/html", "utf-8", null);
 
         });
 
         return webView;
+    }
+
+    /**
+     * On Leanback/TV, put the banner into the D-pad focus chain with a visible focus ring.
+     * Does not stretch creatives or change mobile focus behavior.
+     */
+    private static void applyTelevisionFocusIfNeeded(Context context, WebView webView) {
+        try {
+            if (!com.bidscube.sdk.video.VideoUiDefaults.isTelevision(context)) {
+                return;
+            }
+            webView.setFocusable(true);
+            webView.setFocusableInTouchMode(true);
+            GradientDrawable focused = new GradientDrawable();
+            focused.setColor(Color.TRANSPARENT);
+            focused.setStroke(
+                    (int) (3 * context.getResources().getDisplayMetrics().density + 0.5f),
+                    Color.WHITE);
+            GradientDrawable normal = new GradientDrawable();
+            normal.setColor(Color.TRANSPARENT);
+            android.graphics.drawable.StateListDrawable states =
+                    new android.graphics.drawable.StateListDrawable();
+            states.addState(new int[]{android.R.attr.state_focused}, focused);
+            states.addState(new int[]{}, normal);
+            webView.setForeground(states);
+        } catch (Throwable ignored) {
+        }
     }
 }

@@ -17,6 +17,7 @@ import com.bidscube.sdk.utils.HtmlAdmCreativeParser;
 import com.bidscube.sdk.utils.SDKLogger;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -291,13 +292,30 @@ public class NativeAdParser {
             }
             
             if (eventTrackerJson.has("url")) {
-                eventTracker.setUrl(parseStringArray(eventTrackerJson.getJSONArray("url")));
+                // OpenRTB Native 1.2 Event Tracker Response: url is a string.
+                // Some payloads also send a JSON array — accept both.
+                eventTracker.setUrl(parseUrlField(eventTrackerJson.get("url")));
             }
-            
+
             eventTrackers.add(eventTracker);
         }
-        
+
         return eventTrackers;
+    }
+
+    private static List<String> parseUrlField(Object urlValue) throws JSONException {
+        if (urlValue == null || urlValue == JSONObject.NULL) {
+            return Collections.emptyList();
+        }
+        if (urlValue instanceof JSONArray) {
+            return parseStringArray((JSONArray) urlValue);
+        }
+        if (urlValue instanceof String) {
+            String url = ((String) urlValue).trim();
+            return url.isEmpty() ? Collections.emptyList() : Collections.singletonList(url);
+        }
+        String asString = String.valueOf(urlValue).trim();
+        return asString.isEmpty() ? Collections.emptyList() : Collections.singletonList(asString);
     }
     
     /**

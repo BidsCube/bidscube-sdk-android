@@ -48,6 +48,24 @@ public interface IBidscubeSDK {
      */
     void showRewardedVideoAd(String placementId, AdCallback callback);
 
+    /**
+     * Debug-only inline VAST as rewarded (requires SDK debug mode).
+     */
+    void debugPresentRewardedVast(
+            android.app.Activity activity,
+            String placementId,
+            String vastXml,
+            AdCallback callback);
+
+    /**
+     * Debug-only inline VAST as interstitial (requires SDK debug mode).
+     */
+    void debugPresentInterstitialVast(
+            android.app.Activity activity,
+            String placementId,
+            String vastXml,
+            AdCallback callback);
+
     void showSkippableVideoAd(String placementId, AdCallback callback);
 
     /**

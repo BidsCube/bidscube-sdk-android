@@ -81,6 +81,32 @@ public class BidscubeSDK {
     }
 
     /**
+     * Debug-only: present inline VAST as rewarded through the same {@code AdDisplayManager}
+     * dialog path as {@link #showRewardedVideoAd(String, AdCallback)}.
+     * Requires {@link com.bidscube.sdk.config.SDKConfig.Builder#enableDebugMode(boolean)}.
+     */
+    public static void debugPresentRewardedVast(
+            android.app.Activity activity,
+            String placementId,
+            String vastXml,
+            AdCallback callback) {
+        checkInitialization();
+        sdkInstance.debugPresentRewardedVast(activity, placementId, vastXml, callback);
+    }
+
+    /**
+     * Debug-only: present inline VAST as interstitial through the production dialog path.
+     */
+    public static void debugPresentInterstitialVast(
+            android.app.Activity activity,
+            String placementId,
+            String vastXml,
+            AdCallback callback) {
+        checkInitialization();
+        sdkInstance.debugPresentInterstitialVast(activity, placementId, vastXml, callback);
+    }
+
+    /**
      * Show skippable video ad - display mode determined by response position
      *
      * @param placementId       Ad placement ID
@@ -156,6 +182,18 @@ public class BidscubeSDK {
     public static void setAdPosition(AdPosition position) {
         checkInitialization();
         sdkInstance.setAdPosition(position);
+    }
+
+    /**
+     * QA / host override for video dialog mode (fullscreen vs windowed).
+     * Default is {@link com.bidscube.sdk.video.VideoUiDefaults.FullscreenPolicy#AUTO}.
+     */
+    public static void setVideoFullscreenPolicy(com.bidscube.sdk.video.VideoUiDefaults.FullscreenPolicy policy) {
+        com.bidscube.sdk.video.VideoUiDefaults.setFullscreenPolicy(policy);
+    }
+
+    public static com.bidscube.sdk.video.VideoUiDefaults.FullscreenPolicy getVideoFullscreenPolicy() {
+        return com.bidscube.sdk.video.VideoUiDefaults.getFullscreenPolicy();
     }
 
     /**

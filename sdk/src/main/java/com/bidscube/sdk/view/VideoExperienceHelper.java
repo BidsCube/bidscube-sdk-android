@@ -250,10 +250,42 @@ public final class VideoExperienceHelper {
             }
         };
 
+        final boolean rewarded = format == VideoAdFormat.REWARDED;
+        final VideoDialogRemoteUx.BackActions remoteActions = new VideoDialogRemoteUx.BackActions() {
+            @Override
+            public void onSkipFromBack() {
+                podPlayer.skipVideo();
+            }
+
+            @Override
+            public void onCloseFromBack() {
+                closeAdSession.run();
+            }
+
+            @Override
+            public void onAbandonFromBack() {
+                closeAdSession.run();
+            }
+        };
+
+        final VideoDialogRemoteUx.PlaybackControl playbackControl =
+                new VideoDialogRemoteUx.PlaybackControl() {
+                    @Override
+                    public void pauseForConfirm() {
+                        podPlayer.pausePlayback();
+                    }
+
+                    @Override
+                    public void resumeAfterConfirm() {
+                        podPlayer.resumePlayback();
+                    }
+                };
+
         overlay.setListener(new VideoInterstitialOverlay.Listener() {
             @Override
             public void onSkipRequested() {
-                podPlayer.skipVideo();
+                VideoDialogRemoteUx.requestSkip(
+                        rewarded, remoteActions, activity, overlay, playbackControl);
             }
 
             @Override
@@ -281,8 +313,17 @@ public final class VideoExperienceHelper {
                         placementId, podId, slot.getOpenRtbImpId(), slotInPod, total, slot.getAdId());
             }
             callback.onVideoAdStarted(placementId, current, total, slot.getAdId());
-            int clipSkip = VideoUiDefaults.resolveSkipOffsetSeconds(slot.getSkipOffsetSeconds());
-            activity.runOnUiThread(() -> overlay.startSkipCountdown(clipSkip));
+            Long skipMs = slot.getSkipOffsetMs();
+            com.bidscube.sdk.utils.VastSkipOffset skipSpec = skipMs == null
+                    ? com.bidscube.sdk.utils.VastSkipOffset.absent()
+                    : com.bidscube.sdk.utils.VastSkipOffset.timeSeconds((int) (skipMs / 1000L));
+            int durationSec = slot.getDurationMs() != null
+                    ? (int) (slot.getDurationMs() / 1000L)
+                    : 0;
+            VideoUiDefaults.SkipSchedule schedule =
+                    VideoUiDefaults.resolveSkipSchedule(skipSpec, durationSec, format);
+            activity.runOnUiThread(() ->
+                    overlay.applySkipSchedule(schedule.skipAllowed, schedule.availableAfterSeconds));
         });
 
         podPlayer.setSlotLifecycleListener(new VastAdPodPlayer.SlotLifecycleListener() {
@@ -357,11 +398,12 @@ public final class VideoExperienceHelper {
             podPlayer.post(() -> podPlayer.playPlan(plan));
         });
 
+        boolean fullscreen = VideoUiDefaults.shouldShowFullscreen(activity, position);
+        VideoDialogRemoteUx.install(
+                dialog, overlay, remoteActions, fullscreen, rewarded, activity, playbackControl);
+
         dialog.setOnDismissListener(d -> {
-            if (sessionEnd.get() == SessionEnd.NONE) {
-                sessionEnd.set(SessionEnd.SKIPPED);
-                callback.onVideoAdSkipped(placementId);
-            }
+            // Do not invent skip on unexpected dismiss — skip is set by player callbacks.
             closing.set(true);
             gamifiedEndCard.destroy();
             cleanupOverlay(podPlayer, overlay, null);
@@ -369,7 +411,7 @@ public final class VideoExperienceHelper {
         });
 
         dialog.show();
-        if (position == AdPosition.FULL_SCREEN) {
+        if (fullscreen) {
             configureFullscreen(dialog);
         }
         SDKLogger.d(TAG, "Ad pod dialog shown, clips=" + plan.getTotalAds()
@@ -441,7 +483,13 @@ public final class VideoExperienceHelper {
         String endCardClick = firstNonEmpty(
                 companion != null ? companion.getClickThroughUrl() : null,
                 firstNonEmpty(VastParser.getCompanionClickThroughUrl(adm), clickUrl));
-        int skipOffset = VastParser.getSkipOffsetSeconds(adm);
+        com.bidscube.sdk.utils.VastSkipOffset skipOffsetSpec =
+                com.bidscube.sdk.utils.VastSkipOffset.parseFromVast(adm);
+        int creativeDurationSeconds =
+                com.bidscube.sdk.utils.VastSkipOffset.parseLinearDurationSeconds(adm);
+        final boolean rewarded = format == VideoAdFormat.REWARDED;
+        VideoUiDefaults.SkipSchedule skipSchedule =
+                VideoUiDefaults.resolveSkipSchedule(skipOffsetSpec, creativeDurationSeconds, format);
         VastPreview companionPreview = VastPreview.fromCompanion(companion);
         GamifiedEndCardConfig endCardConfig = GamifiedEndCardConfig.fromPreview(
                 companionPreview,
@@ -608,15 +656,50 @@ public final class VideoExperienceHelper {
             }
         };
 
-        overlay.setListener(new VideoInterstitialOverlay.Listener() {
+        final VideoDialogRemoteUx.BackActions remoteActions = new VideoDialogRemoteUx.BackActions() {
             @Override
-            public void onSkipRequested() {
+            public void onSkipFromBack() {
                 if (playerRef[0] != null) {
                     playerRef[0].skipVideo();
                 } else if (stopPlayableRef[0] != null) {
                     stopPlayableRef[0].run();
                     showEndCard.run();
                 }
+            }
+
+            @Override
+            public void onCloseFromBack() {
+                closeAdSession.run();
+            }
+
+            @Override
+            public void onAbandonFromBack() {
+                closeAdSession.run();
+            }
+        };
+
+        final VideoDialogRemoteUx.PlaybackControl gamifiedPlayback =
+                new VideoDialogRemoteUx.PlaybackControl() {
+                    @Override
+                    public void pauseForConfirm() {
+                        if (playerRef[0] != null) {
+                            playerRef[0].pausePlayback();
+                        }
+                    }
+
+                    @Override
+                    public void resumeAfterConfirm() {
+                        if (playerRef[0] != null) {
+                            playerRef[0].resumePlayback();
+                        }
+                    }
+                };
+
+        overlay.setListener(new VideoInterstitialOverlay.Listener() {
+            @Override
+            public void onSkipRequested() {
+                VideoDialogRemoteUx.requestSkip(
+                        rewarded, remoteActions, activity, overlay, gamifiedPlayback);
             }
 
             @Override
@@ -661,8 +744,14 @@ public final class VideoExperienceHelper {
                 @Override
                 public void onVideoStarted() {
                     callback.onVideoAdStarted(placementId);
-                    int countdown = VideoUiDefaults.resolveSkipOffsetSeconds(skipOffset);
-                    activity.runOnUiThread(() -> overlay.startSkipCountdown(countdown));
+                    activity.runOnUiThread(() ->
+                            overlay.applySkipSchedule(
+                                    skipSchedule.skipAllowed, skipSchedule.availableAfterSeconds));
+                }
+
+                @Override
+                public void onVideoFirstFrame() {
+                    SDKLogger.d(TAG, "Gamified video first frame placement=" + placementId);
                 }
 
                 @Override
@@ -680,11 +769,12 @@ public final class VideoExperienceHelper {
             player.playVast(adm, false);
         });
 
+        boolean fullscreen = VideoUiDefaults.shouldShowFullscreen(activity, position);
+        VideoDialogRemoteUx.install(
+                dialog, overlay, remoteActions, fullscreen, rewarded, activity, gamifiedPlayback);
+
         dialog.setOnDismissListener(d -> {
-            if (sessionEnd.get() == SessionEnd.NONE) {
-                sessionEnd.set(SessionEnd.SKIPPED);
-                callback.onVideoAdSkipped(placementId);
-            }
+            // Do not invent skip on unexpected dismiss — skip is set by player callbacks.
             closing.set(true);
             if (endCardRef[0] != null) {
                 endCardRef[0].destroy();
@@ -697,14 +787,14 @@ public final class VideoExperienceHelper {
         });
 
         dialog.show();
-        if (position == AdPosition.FULL_SCREEN) {
+        if (fullscreen) {
             configureFullscreen(dialog);
         }
         SDKLogger.d(TAG, "Gamified video dialog shown autoClose=" + autoClose);
     }
 
     private static Dialog createDialog(Activity activity, AdPosition position) {
-        if (position == AdPosition.FULL_SCREEN) {
+        if (VideoUiDefaults.shouldShowFullscreen(activity, position)) {
             return new Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         }
         return new Dialog(activity);

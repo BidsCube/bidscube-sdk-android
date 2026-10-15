@@ -72,6 +72,13 @@ public class PlayableWebView extends FrameLayout {
         });
 
         addView(webView);
+        // Playable HTML must be reachable via D-pad on TV; skip/close remain on the overlay.
+        if (com.bidscube.sdk.video.VideoUiDefaults.isTelevision(context)) {
+            webView.setFocusable(true);
+            webView.setFocusableInTouchMode(true);
+            setFocusable(true);
+            setDescendantFocusability(FOCUS_AFTER_DESCENDANTS);
+        }
     }
 
     public void setListener(@Nullable Listener listener) {
@@ -82,8 +89,9 @@ public class PlayableWebView extends FrameLayout {
         finished = false;
         String query = buildQueryString();
         if (config.hasInlineHtml()) {
+            // baseURL null matches iOS WKWebView loadHTMLString(..., baseURL: nil).
             webView.loadDataWithBaseURL(
-                    "https://playable.bidscube.local/",
+                    null,
                     config.getPlayableHtml(),
                     "text/html",
                     "utf-8",

@@ -141,6 +141,47 @@ public class BidscubeSDKImpl implements IBidscubeSDK {
         showVideoInternal(placementId, callback, VideoAdFormat.REWARDED);
     }
 
+    @Override
+    public void debugPresentRewardedVast(
+            android.app.Activity activity,
+            String placementId,
+            String vastXml,
+            AdCallback callback) {
+        debugPresentVast(activity, placementId, vastXml, VideoAdFormat.REWARDED, callback);
+    }
+
+    @Override
+    public void debugPresentInterstitialVast(
+            android.app.Activity activity,
+            String placementId,
+            String vastXml,
+            AdCallback callback) {
+        debugPresentVast(activity, placementId, vastXml, VideoAdFormat.INTERSTITIAL, callback);
+    }
+
+    private void debugPresentVast(
+            android.app.Activity activity,
+            String placementId,
+            String vastXml,
+            VideoAdFormat format,
+            AdCallback callback) {
+        checkInitialization();
+        if (callback == null) {
+            return;
+        }
+        if (config == null || !config.isEnableDebugMode()) {
+            callback.onAdFailed(placementId, -1, "debugPresentVast requires enableDebugMode(true)");
+            return;
+        }
+        if (!config.isVideoAdsEnabled() || !VideoAdPlayerFactory.isVideoSupported()) {
+            callback.onAdFailed(placementId, ERROR_VIDEO_UNSUPPORTED, MSG_VIDEO_UNSUPPORTED);
+            return;
+        }
+        callback.onAdLoading(placementId);
+        callback.onAdLoaded(placementId);
+        adDisplayManager.presentInlineVastDebug(placementId, vastXml, format, callback, activity);
+    }
+
     private void showVideoInternal(String placementId, AdCallback callback, VideoAdFormat format) {
         checkInitialization();
         if (callback == null) {

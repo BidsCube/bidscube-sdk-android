@@ -46,8 +46,11 @@ public final class ImaNativeSkipBlocker {
     public static ImaNativeSkipBlocker attach(@NonNull FrameLayout container) {
         View blocker = new View(container.getContext());
         blocker.setBackgroundColor(0xFF000000);
+        // Absorb touch/IMA clicks only — must not steal D-pad focus from Skip/Close.
         blocker.setClickable(true);
-        blocker.setFocusable(true);
+        blocker.setFocusable(false);
+        blocker.setFocusableInTouchMode(false);
+        blocker.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         blocker.setElevation(dp(container, 24));
         blocker.setVisibility(View.GONE);
 

@@ -51,6 +51,7 @@ import com.bidscube.sdk.video.VideoUiDefaults;
 import com.bidscube.sdk.view.BannerViewFactory;
 import com.bidscube.sdk.view.BidscubeVideoAdPlayer;
 import com.bidscube.sdk.view.ImaNativeSkipBlocker;
+import com.bidscube.sdk.view.VideoDialogRemoteUx;
 import com.bidscube.sdk.view.VideoInterstitialOverlay;
 import com.bidscube.sdk.view.VideoInterstitialUiHelper;
 import com.bidscube.sdk.view.OutstreamAdViewFactory;
@@ -802,9 +803,16 @@ public class AdDisplayManager {
         final String endCardClickUrl = firstNonEmpty(
                 companion != null ? companion.getClickThroughUrl() : null,
                 firstNonEmpty(VastParser.getCompanionClickThroughUrl(adm), vastRedirectUrl));
-        final int skipOffsetSeconds = VastParser.getSkipOffsetSeconds(adm);
+        final com.bidscube.sdk.utils.VastSkipOffset skipOffset =
+                com.bidscube.sdk.utils.VastSkipOffset.parseFromVast(adm);
+        final int creativeDurationSeconds =
+                com.bidscube.sdk.utils.VastSkipOffset.parseLinearDurationSeconds(adm);
+        final boolean rewarded = format == VideoAdFormat.REWARDED;
+        // Format policy wins: rewarded → skipAllowed=false (VAST/IMA cannot enable Skip).
+        final VideoUiDefaults.SkipSchedule skipSchedule =
+                VideoUiDefaults.resolveSkipSchedule(skipOffset, creativeDurationSeconds, format);
 
-        final boolean fullscreen = effectivePosition == AdPosition.FULL_SCREEN;
+        final boolean fullscreen = VideoUiDefaults.shouldShowFullscreen(activity, effectivePosition);
         final Dialog dialog;
         final FrameLayout frameContainer = new FrameLayout(activity);
         frameContainer.setLayoutParams(new LinearLayout.LayoutParams(
@@ -813,12 +821,13 @@ public class AdDisplayManager {
 
         if (fullscreen) {
             dialog = new Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-            SDKLogger.d(TAG, "Response indicates full screen display for video ad");
+            SDKLogger.d(TAG, "Video ad display mode=fullscreen (position=" + effectivePosition
+                    + ", tv=" + VideoUiDefaults.isTelevision(activity) + ")");
         } else {
             dialog = new Dialog(activity);
             String positionName = getPositionDisplayName();
             dialog.setTitle("Video Ad - " + positionName);
-            SDKLogger.d(TAG, "Response indicates windowed display for video ad");
+            SDKLogger.d(TAG, "Video ad display mode=windowed (position=" + effectivePosition + ")");
         }
 
         BidscubeVideoAdPlayer videoPlayer =
@@ -898,10 +907,42 @@ public class AdDisplayManager {
             }
         };
 
+        final VideoDialogRemoteUx.BackActions remoteActions = new VideoDialogRemoteUx.BackActions() {
+            @Override
+            public void onSkipFromBack() {
+                videoPlayer.skipVideo();
+            }
+
+            @Override
+            public void onCloseFromBack() {
+                closeAdSession.run();
+            }
+
+            @Override
+            public void onAbandonFromBack() {
+                // Locked rewarded exit: close without skip/complete/reward.
+                closeAdSession.run();
+            }
+        };
+
+        final VideoDialogRemoteUx.PlaybackControl playbackControl =
+                new VideoDialogRemoteUx.PlaybackControl() {
+                    @Override
+                    public void pauseForConfirm() {
+                        videoPlayer.pausePlayback();
+                    }
+
+                    @Override
+                    public void resumeAfterConfirm() {
+                        videoPlayer.resumePlayback();
+                    }
+                };
+
         overlay.setListener(new VideoInterstitialOverlay.Listener() {
             @Override
             public void onSkipRequested() {
-                videoPlayer.skipVideo();
+                VideoDialogRemoteUx.requestSkip(
+                        rewarded, remoteActions, activity, overlay, playbackControl);
             }
 
             @Override
@@ -950,15 +991,29 @@ public class AdDisplayManager {
             @Override
             public void onVideoStarted() {
                 callback.onVideoAdStarted(placementId);
-                int countdownSeconds = VideoUiDefaults.resolveSkipOffsetSeconds(skipOffsetSeconds);
                 activity.runOnUiThread(() -> {
-                    overlay.startSkipCountdown(countdownSeconds);
+                    overlay.applySkipSchedule(
+                            skipSchedule.skipAllowed, skipSchedule.availableAfterSeconds);
+                    // Always cover IMA native Skip chrome; rewarded must never expose Skip.
                     imaSkipBlocker.show(overlay);
                 });
             }
 
             @Override
+            public void onVideoFirstFrame() {
+                SDKLogger.d(TAG, "Video first frame callback placement=" + placementId
+                        + " rewarded=" + rewarded);
+            }
+
+            @Override
             public void onVideoSkippable() {
+                // IMA may signal skippable independently — format policy still wins.
+                if (rewarded || !skipSchedule.skipAllowed) {
+                    SDKLogger.d(TAG, "Ignoring IMA onVideoSkippable (rewarded="
+                            + rewarded + ", skipAllowed=" + skipSchedule.skipAllowed + ")");
+                    activity.runOnUiThread(() -> imaSkipBlocker.show(overlay));
+                    return;
+                }
                 callback.onVideoAdSkippable(placementId);
                 activity.runOnUiThread(() -> {
                     overlay.enableSkip();
@@ -986,12 +1041,12 @@ public class AdDisplayManager {
             videoPlayer.playVast(adm, false);
         });
 
+        VideoDialogRemoteUx.install(
+                dialog, overlay, remoteActions, fullscreen, rewarded, activity, playbackControl);
+
         dialog.setOnDismissListener(d -> {
-            VideoSessionEnd end = sessionEnd.get();
-            if (end == VideoSessionEnd.NONE) {
-                sessionEnd.set(VideoSessionEnd.SKIPPED);
-                callback.onVideoAdSkipped(placementId);
-            }
+            // Unexpected dismiss (process death / finish) must not invent a VAST skip.
+            // Skip/complete are set explicitly by player callbacks before intentional close.
             closing.set(true);
             try {
                 overlay.detach();
@@ -1013,8 +1068,38 @@ public class AdDisplayManager {
         currentVideoPlayer = videoPlayer;
 
         SDKLogger.d(TAG, "Video ad dialog shown (fullscreen=" + fullscreen
-                + ", skipOffset=" + skipOffsetSeconds
+                + ", skipKind=" + skipOffset.kind
+                + ", skipAllowed=" + skipSchedule.skipAllowed
+                + ", skipAfter=" + skipSchedule.availableAfterSeconds
+                + ", rewarded=" + rewarded
                 + ", autoClose=" + autoClose + ")");
+    }
+
+    /**
+     * Debug / QA: present inline VAST through the same dialog path as production video.
+     * Gated by caller (SDK debug mode).
+     */
+    void presentInlineVastDebug(
+            String placementId,
+            String vastXml,
+            VideoAdFormat format,
+            AdCallback callback,
+            Activity activity) {
+        if (activity == null || vastXml == null || vastXml.trim().isEmpty() || callback == null) {
+            if (callback != null) {
+                callback.onAdFailed(placementId, -1, "debug VAST present missing args");
+            }
+            return;
+        }
+        String click = resolveVideoClickThroughUrl(vastXml, null);
+        presentVideoVastInDialog(
+                placementId,
+                vastXml.trim(),
+                click,
+                AdPosition.FULL_SCREEN,
+                format != null ? format : VideoAdFormat.INTERSTITIAL,
+                callback,
+                activity);
     }
 
     private static String resolveVideoClickThroughUrl(

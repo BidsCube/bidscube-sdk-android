@@ -23,6 +23,9 @@ public interface BidscubeVideoAdPlayer {
 
         /** Fired when a skippable ad becomes eligible to skip (IMA SKIPPABLE_STATE_CHANGED). */
         default void onVideoSkippable() {}
+
+        /** Media3 painted the first video frame (diagnostic / timeline). */
+        default void onVideoFirstFrame() {}
     }
 
     void setLayoutParams(ViewGroup.LayoutParams params);
@@ -36,4 +39,10 @@ public interface BidscubeVideoAdPlayer {
     void release();
 
     ViewGroup asViewGroup();
+
+    /** Pause linear playback (rewarded confirm). Default no-op. */
+    default void pausePlayback() {}
+
+    /** Resume linear playback after confirm cancel. Default no-op. */
+    default void resumePlayback() {}
 }

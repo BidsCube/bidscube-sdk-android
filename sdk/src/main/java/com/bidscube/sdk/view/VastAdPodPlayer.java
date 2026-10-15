@@ -229,6 +229,16 @@ public class VastAdPodPlayer extends FrameLayout implements BidscubeVideoAdPlaye
     }
 
     @Override
+    public void pausePlayback() {
+        slotPlayer.pause();
+    }
+
+    @Override
+    public void resumePlayback() {
+        slotPlayer.resume();
+    }
+
+    @Override
     public void release() {
         slotPlayer.release();
         controller.destroy();

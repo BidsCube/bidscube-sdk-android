@@ -6,6 +6,10 @@ on:
       - 'v*'
   workflow_dispatch: { }
 
+# GITHUB_TOKEN can create Releases when RELEASE_TOKEN secret is unset.
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build + Release
@@ -204,17 +208,6 @@ jobs:
           echo "Created $OUT ($(du -h "$GITHUB_WORKSPACE/$OUT" | cut -f1))"
           echo "MAVEN_ZIP_NAME=$OUT" >> $GITHUB_ENV
 
-      - name: Detect optional GitHub release token
-        id: release_token
-        env:
-          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-        run: |
-          if [ -n "$RELEASE_TOKEN" ]; then
-            echo "has_release_token=yes" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_release_token=no" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Upload CI artifacts (always)
         uses: actions/upload-artifact@v4
         with:
@@ -225,13 +218,15 @@ jobs:
             bidscube-sdk-maven-*.zip
           if-no-files-found: error
 
+      # Prefer optional RELEASE_TOKEN (e.g. fine-grained PAT); fall back to GITHUB_TOKEN.
       - name: Create GitHub Release with assets
-        if: ${{ steps.release_token.outputs.has_release_token == 'yes' }}
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         uses: softprops/action-gh-release@v2
         with:
-          token: ${{ secrets.RELEASE_TOKEN }}
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
+          generate_release_notes: true
           body: |
             Automated release for ${{ github.ref_name }}.
 
@@ -245,16 +240,6 @@ jobs:
           files: |
             sdk/build/outputs/aar/*.aar
             bidscube-sdk-maven-*.zip
-
-      - name: Save artifacts locally when no release token
-        if: ${{ steps.release_token.outputs.has_release_token != 'yes' }}
-        run: |
-          echo "No RELEASE_TOKEN secret; artifacts are only in the workflow job (upload-artifact) and under ./release_artifacts"
-          mkdir -p release_artifacts
-          cp -v sdk/build/outputs/aar/*.aar release_artifacts/ || true
-          cp -v bidscube-sdk-maven-*.zip release_artifacts/ || true
-          cp -v sdk/build/libs/*.jar release_artifacts/ 2>/dev/null || true
-          ls -la release_artifacts || true
 
       - name: Done
         run: echo "Publish job finished (no Sonatype credentials required)."

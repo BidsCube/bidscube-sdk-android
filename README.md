@@ -36,9 +36,9 @@ repositories {
 
 dependencies {
     // Published Maven artifacts (see sdk/build.gradle.kts):
-    implementation("com.bidscube:bidscube-sdk-full-video:1.2.11@aar")
+    implementation("com.bidscube:bidscube-sdk-full-video:1.2.12@aar")
     // Image/native/banner only — no Media3/IMA:
-    // implementation("com.bidscube:bidscube-sdk-lite-no-video:1.2.11@aar")
+    // implementation("com.bidscube:bidscube-sdk-lite-no-video:1.2.12@aar")
 }
 ```
 
@@ -62,7 +62,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.bidscube:bidscube-sdk-full-video:1.2.11'
+    implementation 'com.bidscube:bidscube-sdk-full-video:1.2.12'
 }
 ```
 
@@ -631,7 +631,15 @@ This SDK is protected under the MIT License. For full license terms, please refe
 
 ## Version
 
-This README and examples are updated for Bidscube SDK version 1.2.11.
+This README and examples are updated for Bidscube SDK version 1.2.12.
+
+## What's new in 1.2.12 (user-facing)
+
+- **Android TV / Leanback:** video dialogs default to fullscreen (`FullscreenPolicy.AUTO`); D-pad focus on Skip / Close / rewarded confirm; TV detection helpers.
+- **Rewarded:** Skip never shown (format policy wins over VAST/IMA); Back shows leave-confirm (leave → no reward); `onUserRewarded` once on full complete only.
+- **Interstitial Skip:** unchanged omit policy (**15s** when `skipoffset` absent; `0` → immediate); stall timeout **15s** if playback never starts.
+- **Publisher override:** `BidscubeSDK.setVideoFullscreenPolicy(...)` (`AUTO` / `FORCE_FULLSCREEN` / `FORCE_WINDOWED`).
+- **Docs:** [Android TV + interstitial vs rewarded](docs/android-tv-interstitial-rewarded.md).
 
 ## What's new in 1.2.11 (user-facing)
 

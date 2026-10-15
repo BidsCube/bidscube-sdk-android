@@ -19,7 +19,7 @@ import com.bidscube.sdk.models.enums.AdPosition;
  * <ol>
  *   <li>{@link VideoAdFormat#REWARDED} — Skip never offered (format policy)</li>
  *   <li>Publisher / BidsCube omit policy — when VAST omits {@code skipoffset}, interstitial is
- *       skippable after {@link #DEFAULT_SKIP_OFFSET_SECONDS} (README 1.2.9 / 1.2.11)</li>
+ *       skippable after {@link #DEFAULT_SKIP_OFFSET_SECONDS} (README 1.2.9+)</li>
  *   <li>VAST {@code skipoffset} time / percent (interstitial only)</li>
  *   <li>IMA {@code onVideoSkippable} — may arm Skip earlier on interstitial IMA path only;
  *       must not override rewarded</li>
@@ -73,7 +73,7 @@ public final class VideoUiDefaults {
     /**
      * Skip permission + when the Skip control becomes available.
      * BidsCube publisher policy: when VAST omits {@code skipoffset}, the ad is still skippable
-     * after {@link #DEFAULT_SKIP_OFFSET_SECONDS} (documented in README 1.2.9 / 1.2.11).
+     * after {@link #DEFAULT_SKIP_OFFSET_SECONDS} (documented in README 1.2.9+).
      */
     public static final class SkipSchedule {
         /** Whether Skip may ever be offered for this linear creative. */

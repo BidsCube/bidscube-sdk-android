@@ -28,7 +28,7 @@ Permission and timing are separate (`VastSkipOffset` → `VideoUiDefaults.SkipSc
 
 | VAST `skipoffset` | Behavior |
 |-------------------|----------|
-| **Absent** | Skippable after **15s** (BidsCube publisher default; README 1.2.9 / 1.2.11) |
+| **Absent** | Skippable after **15s** (BidsCube publisher default; README 1.2.9+) |
 | `00:00:00` / `0` | Skip **immediately** |
 | Time (e.g. `00:00:15`) | Skip after that many seconds |
 | Percent (e.g. `25%`) + Duration | `floor(duration × percent)` |

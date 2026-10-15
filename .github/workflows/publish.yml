@@ -219,6 +219,37 @@ jobs:
           if-no-files-found: error
 
       # Prefer optional RELEASE_TOKEN (e.g. fine-grained PAT); fall back to GITHUB_TOKEN.
+      # Body: docs/releases/<tag>.md when present, else a short fallback + compare link.
+      - name: Build release notes body
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          NOTES="docs/releases/${TAG}.md"
+          OUT="${RUNNER_TEMP}/release-body.md"
+          if [ -f "$NOTES" ]; then
+            cat "$NOTES" > "$OUT"
+          else
+            {
+              echo "# Bidscube Android SDK ${TAG#v}"
+              echo
+              echo "See README **What's new** and compare: https://github.com/${GITHUB_REPOSITORY}/compare/vPREVIOUS...${TAG}"
+              echo
+            } > "$OUT"
+          fi
+          {
+            echo
+            echo "---"
+            echo
+            echo "**Distribution (no Maven Central):**"
+            echo "- AAR: attached \`sdk-*-release.aar\`"
+            echo "- Maven layout: \`bidscube-sdk-maven-*.zip\`"
+            echo "- Module: \`implementation(project(\":sdk\"))\`"
+            echo "- JitPack: \`com.github.BidsCube:bidscube-sdk-android\` @ \`${TAG}\`"
+          } >> "$OUT"
+          echo "RELEASE_BODY_PATH=$OUT" >> "$GITHUB_ENV"
+          head -40 "$OUT"
+
       - name: Create GitHub Release with assets
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         uses: softprops/action-gh-release@v2
@@ -226,17 +257,7 @@ jobs:
           token: ${{ secrets.RELEASE_TOKEN || github.token }}
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
-          generate_release_notes: true
-          body: |
-            Automated release for ${{ github.ref_name }}.
-
-            **Distribution (no Maven Central):**
-            - AAR: `sdk-release.aar` (or attached `sdk-*.aar`)
-            - Maven layout: `bidscube-sdk-maven-*.zip` — unzip to an HTTP-accessible directory and use `maven { url = uri("...") }`, or copy into your internal Nexus/Artifactory.
-
-            **Integrate as module:** `implementation(project(":sdk"))` from a checkout.
-
-            **JitPack:** see [JitPack](https://jitpack.io) for `com.github.BidsCube:bidscube-sdk-android` (tag / commit).
+          body_path: ${{ env.RELEASE_BODY_PATH }}
           files: |
             sdk/build/outputs/aar/*.aar
             bidscube-sdk-maven-*.zip

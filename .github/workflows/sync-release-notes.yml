@@ -1,0 +1,66 @@
+name: Sync release notes
+
+# Pushes docs/releases/vX.Y.Z.md → updates GitHub Release body for tag vX.Y.Z
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/releases/v*.md'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag without docs path, e.g. v1.2.12'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve note file + tag
+        id: meta
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            # Prefer the file changed in this push
+            FILE=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- 'docs/releases/v*.md' | head -1 || true)
+            if [ -z "${FILE:-}" ]; then
+              FILE=$(ls -1 docs/releases/v*.md 2>/dev/null | sort -V | tail -1)
+            fi
+            TAG="$(basename "$FILE" .md)"
+          fi
+          FILE="docs/releases/${TAG}.md"
+          test -f "$FILE"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "file=$FILE" >> "$GITHUB_OUTPUT"
+          echo "Using $FILE → release $TAG"
+
+      - name: Update GitHub Release body
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.meta.outputs.tag }}"
+          FILE="${{ steps.meta.outputs.file }}"
+          # softprops-compatible: body is the markdown note; keep distribution footer short
+          {
+            cat "$FILE"
+            echo
+            echo "---"
+            echo
+            echo "**Distribution (no Maven Central):** attached AAR(s) + \`bidscube-sdk-maven-*.zip\`."
+            echo "Module integrate: \`implementation(project(\":sdk\"))\`."
+          } > /tmp/release-body.md
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file /tmp/release-body.md
+            echo "Updated existing release $TAG"
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file /tmp/release-body.md
+            echo "Created release $TAG (no assets attached by this job)"
+          fi
